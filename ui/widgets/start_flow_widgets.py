@@ -1,0 +1,195 @@
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QPlainTextEdit,
+    QProgressBar,
+    QPushButton,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
+
+
+class StartHomeView(QWidget):
+    enter_video_idea_clicked = Signal()
+    enter_narration_clicked = Signal()
+    upload_audio_clicked = Signal()
+    project_activated = Signal(str)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.projects_list = QListWidget()
+        self.empty_projects_label = QLabel("No projects to load")
+        self.empty_projects_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        main_layout = QGridLayout(self)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setHorizontalSpacing(20)
+        main_layout.setVerticalSpacing(20)
+
+        create_project_box = QGroupBox("Create New Project")
+        create_layout = QVBoxLayout()
+        create_layout.setSpacing(12)
+
+        btn_video_idea = QPushButton("Enter video idea")
+        btn_narration = QPushButton("Enter narration")
+        btn_upload_audio = QPushButton("Upload audio file")
+
+        btn_video_idea.clicked.connect(self.enter_video_idea_clicked)
+        btn_narration.clicked.connect(self.enter_narration_clicked)
+        btn_upload_audio.clicked.connect(self.upload_audio_clicked)
+
+        create_layout.addWidget(btn_video_idea)
+        create_layout.addWidget(btn_narration)
+        create_layout.addWidget(btn_upload_audio)
+        create_layout.addStretch()
+        create_project_box.setLayout(create_layout)
+
+        load_project_box = QGroupBox("Load Project")
+        load_layout = QVBoxLayout()
+        load_layout.setSpacing(12)
+        load_layout.addWidget(self.projects_list)
+        load_layout.addWidget(self.empty_projects_label)
+        load_project_box.setLayout(load_layout)
+
+        self.projects_list.itemActivated.connect(
+            lambda item: self.project_activated.emit(item.text())
+        )
+
+        main_layout.addWidget(create_project_box, 0, 0)
+        main_layout.addWidget(load_project_box, 0, 1)
+        main_layout.setColumnStretch(0, 1)
+        main_layout.setColumnStretch(1, 1)
+
+
+class VideoIdeaView(QWidget):
+    back_clicked = Signal()
+    generate_clicked = Signal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.video_idea_input = QPlainTextEdit()
+        self.back_button = QPushButton("Back")
+        self.generate_button = QPushButton("Generate")
+        self._action_stack = QStackedWidget()
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        layout = QGridLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setHorizontalSpacing(20)
+        layout.setVerticalSpacing(12)
+
+        self.back_button.clicked.connect(self.back_clicked)
+        back_row = QHBoxLayout()
+        back_row.addWidget(self.back_button)
+        back_row.addStretch()
+        layout.addLayout(back_row, 0, 0)
+
+        self.video_idea_input.setPlaceholderText("Enter video idea...")
+        layout.addWidget(self.video_idea_input, 1, 0)
+
+        self.generate_button.clicked.connect(self.generate_clicked)
+        generate_row = QWidget(self)
+        generate_row_layout = QHBoxLayout(generate_row)
+        generate_row_layout.setContentsMargins(0, 0, 0, 0)
+        generate_row_layout.addWidget(self.generate_button)
+        generate_row_layout.addStretch()
+
+        loading_row = QWidget(self)
+        loading_row_layout = QHBoxLayout(loading_row)
+        loading_row_layout.setContentsMargins(0, 0, 0, 0)
+        loading_label = QLabel("Generating...")
+        loading_spinner = QProgressBar()
+        loading_spinner.setRange(0, 0)
+        loading_spinner.setTextVisible(False)
+        loading_spinner.setFixedWidth(120)
+        loading_row_layout.addWidget(loading_label)
+        loading_row_layout.addWidget(loading_spinner)
+        loading_row_layout.addStretch()
+
+        self._action_stack.addWidget(generate_row)
+        self._action_stack.addWidget(loading_row)
+        self._action_stack.setCurrentIndex(0)
+        layout.addWidget(self._action_stack, 2, 0)
+        layout.setRowStretch(1, 1)
+
+    def set_loading(self, is_loading: bool) -> None:
+        self._action_stack.setCurrentIndex(1 if is_loading else 0)
+        self.back_button.setEnabled(not is_loading)
+        self.generate_button.setEnabled(not is_loading)
+
+
+class NarrationEditorView(QWidget):
+    back_clicked = Signal()
+    create_project_clicked = Signal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.narration_editor = QPlainTextEdit()
+        self.project_title_input = QLineEdit()
+        self.back_button = QPushButton("Back")
+        self.create_project_button = QPushButton("Create project")
+        self._action_stack = QStackedWidget()
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        layout = QGridLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setHorizontalSpacing(20)
+        layout.setVerticalSpacing(12)
+
+        self.back_button.clicked.connect(self.back_clicked)
+        back_row = QHBoxLayout()
+        back_row.addWidget(self.back_button)
+        back_row.addStretch()
+        layout.addLayout(back_row, 0, 0)
+
+        layout.addWidget(self.narration_editor, 1, 0)
+
+        self.create_project_button.clicked.connect(self.create_project_clicked)
+        create_project_row = QWidget(self)
+        create_project_row_layout = QHBoxLayout(create_project_row)
+        create_project_row_layout.setContentsMargins(0, 0, 0, 0)
+        self.project_title_input.setFixedWidth(180)
+        self.project_title_input.setPlaceholderText("Project title")
+        create_project_row_layout.addWidget(self.project_title_input)
+        create_project_row_layout.addWidget(self.create_project_button)
+        create_project_row_layout.addStretch()
+
+        loading_row = QWidget(self)
+        loading_row_layout = QHBoxLayout(loading_row)
+        loading_row_layout.setContentsMargins(0, 0, 0, 0)
+        loading_label = QLabel("Creating project...")
+        loading_spinner = QProgressBar()
+        loading_spinner.setRange(0, 0)
+        loading_spinner.setTextVisible(False)
+        loading_spinner.setFixedWidth(160)
+        loading_row_layout.addWidget(loading_label)
+        loading_row_layout.addWidget(loading_spinner)
+        loading_row_layout.addStretch()
+
+        self._action_stack.addWidget(create_project_row)
+        self._action_stack.addWidget(loading_row)
+        self._action_stack.setCurrentIndex(0)
+        layout.addWidget(self._action_stack, 2, 0)
+        layout.setRowStretch(1, 1)
+
+    def set_loading(self, is_loading: bool) -> None:
+        self._action_stack.setCurrentIndex(1 if is_loading else 0)
+        self.back_button.setEnabled(not is_loading)
+        self.create_project_button.setEnabled(not is_loading)
+        self.project_title_input.setReadOnly(is_loading)
+
+    def set_project_title(self, title: str) -> None:
+        self.project_title_input.setText(title)
+
+    def get_project_title(self) -> str:
+        return self.project_title_input.text().strip()
