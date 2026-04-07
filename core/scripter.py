@@ -4,7 +4,6 @@ import re
 from config import DEEPSEEK_API_KEY
 from core.prompts import SEGMENTATION_SYSTEM_PROMPT, narration_prompt
 
-# Initialize OpenAI client
 client = OpenAI(
     api_key=DEEPSEEK_API_KEY,
     base_url="https://api.deepseek.com"
@@ -40,7 +39,7 @@ def segment_narration(
         narration,
         merge_last=False,
         model="deepseek-reasoner",
-        max_tokens=1000,
+        max_tokens=2000,
         temperature=0.6
         ):
     """Splits narration into coherent segments."""
@@ -59,6 +58,8 @@ def segment_narration(
     segments = response.choices[0].message.content.strip()
     segments = re.sub(r'  \n', '', segments)
     segments = re.sub(r'\n\s*\n', '\n', segments)
+    if len(segments) == 0:
+        raise ValueError("No segments returned")
     
     if merge_last:
         last_newline = segments.rfind('\n')
@@ -73,6 +74,9 @@ def get_segments(narration: str) -> list[str]:
 
     raw_segments = segment_narration(narration)
     print(raw_segments)
+    # if not raw_segments:
+    #     print("------No segments returned------ trying again")
+    #     get_segments(narration)
     segments = [line.strip() for line in raw_segments.splitlines() if line.strip()]
     return segments
 

@@ -4,17 +4,22 @@ from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QPushButton,
     QScrollArea,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from config import PROJECTS_DIR
 from core.models.project import Project
+from core.models.segment import Segment
+from ui.widgets.segment_block import SegmentBlock, column_count_for_viewport
+from ui.widgets.segment_view import SegmentView
 
 
 def _resolved_voiceover_path(project: Project) -> Path | None:
@@ -30,6 +35,17 @@ class ProjectWindow(QMainWindow):
         self._project = project
         self._voiceover_file = _resolved_voiceover_path(project)
         self._voiceover_btn: QPushButton | None = None
+        self._stack: QStackedWidget | None = None
+        self._project_view: QWidget | None = None
+        self._segment_detail_view: SegmentView | None = None
+
+        self._segments_scroll: QScrollArea | None = None
+        # QGridLayout must be attached to a QWidget. It cannot attach directly to QScrollArea
+        self._segments_grid_host: QWidget | None = None
+        self._segments_grid: QGridLayout | None = None
+        self._segment_blocks: list[SegmentBlock] = []
+        self._block_size_px = 240
+        self._grid_spacing = 12
         self.setWindowTitle(f"Videnerate - {project.title}")
 
         self._media_player = QMediaPlayer(self)
@@ -64,12 +80,15 @@ class ProjectWindow(QMainWindow):
         super().closeEvent(event)
 
     def _build_ui(self) -> None:
-        root = QWidget(self)
-        root_layout = QVBoxLayout(root)
-        root_layout.setContentsMargins(20, 20, 20, 20)
-        root_layout.setSpacing(12)
+        self._stack = QStackedWidget(self)
+        self.setCentralWidget(self._stack)
 
-        header = QLabel("Segments")
+        self._project_view = QWidget(self._stack)
+        project_layout = QVBoxLayout(self._project_view)
+        project_layout.setContentsMargins(20, 20, 20, 20)
+        project_layout.setSpacing(12)
+
+        header = QLabel(self._project.title)
         header.setAlignment(Qt.AlignmentFlag.AlignLeft)
         header.setStyleSheet("font-size: 18px; font-weight: 600;")
 
@@ -84,27 +103,87 @@ class ProjectWindow(QMainWindow):
             self._voiceover_btn.setToolTip(str(self._voiceover_file))
         self._voiceover_btn.clicked.connect(self._toggle_voiceover)
         header_row.addWidget(self._voiceover_btn)
-        root_layout.addLayout(header_row)
+        project_layout.addLayout(header_row)
 
-        scroll = QScrollArea(self)
-        scroll.setWidgetResizable(True)
+        self._segments_scroll = QScrollArea(self._project_view)
+        self._segments_scroll.setWidgetResizable(True)
+        self._segments_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
-        content = QWidget(scroll)
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(10)
+        self._segments_grid_host = QWidget(self._segments_scroll)
+        self._segments_grid = QGridLayout(self._segments_grid_host)
 
-        for seg in self._project.segments:
-            label = QLabel(seg.text)
-            label.setWordWrap(True)
-            label.setStyleSheet(
-                "padding: 10px 12px; border: 1px solid #333; border-radius: 8px;"
-            )
-            content_layout.addWidget(label)
+        self._segments_grid.setContentsMargins(
+            self._grid_spacing,
+            self._grid_spacing,
+            self._grid_spacing,
+            self._grid_spacing,
+        )
 
-        content_layout.addStretch()
-        scroll.setWidget(content)
-        root_layout.addWidget(scroll, 1)
+        self._segments_grid.setHorizontalSpacing(self._grid_spacing)
+        self._segments_grid.setVerticalSpacing(self._grid_spacing)
+        self._segments_grid.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
 
-        self.setCentralWidget(root)
+        self._segment_blocks = [
+            SegmentBlock(seg, size_px=self._block_size_px, parent=self._segments_grid_host)
+            for seg in self._project.segments
+        ]
+        self._rebuild_segments_grid()
+        self._wire_segment_block_clicks()
+
+        self._segments_scroll.setWidget(self._segments_grid_host)
+        project_layout.addWidget(self._segments_scroll, 1)
+
+        self._stack.addWidget(self._project_view)
+
+        self._segment_detail_view = SegmentView(
+            project=self._project,
+            block_size_px=self._block_size_px,
+            grid_spacing=self._grid_spacing,
+            parent=self._stack,
+        )
+        self._segment_detail_view.close_requested.connect(self._show_project_view)
+        self._stack.addWidget(self._segment_detail_view)
+
+        self._stack.setCurrentIndex(0)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._rebuild_segments_grid()
+
+    def _rebuild_segments_grid(self) -> None:
+        if self._segments_scroll is None or self._segments_grid is None:
+            return
+
+        # Clear layout items (widgets are kept alive in self._segment_blocks).
+        while self._segments_grid.count():
+            item = self._segments_grid.takeAt(0)
+            if item is None:
+                break
+
+        viewport_width = self._segments_scroll.viewport().width()
+        cols = column_count_for_viewport(
+            viewport_width,
+            block_size_px=self._block_size_px,
+            grid_spacing=self._grid_spacing,
+        )
+
+        for i, block in enumerate(self._segment_blocks):
+            row = i // cols
+            col = i % cols
+            self._segments_grid.addWidget(block, row, col)
+
+    def _wire_segment_block_clicks(self) -> None:
+        for block, seg in zip(self._segment_blocks, self._project.segments):
+            block.clicked.connect(lambda s=seg: self._open_segment_view(s))
+
+    def _open_segment_view(self, segment: Segment) -> None:
+        if self._segment_detail_view is None or self._stack is None:
+            return
+        self._segment_detail_view.set_segment(segment)
+        self._stack.setCurrentIndex(1)
+
+    def _show_project_view(self) -> None:
+        if self._stack is not None:
+            self._stack.setCurrentIndex(0)
+
 
