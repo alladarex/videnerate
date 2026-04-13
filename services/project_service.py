@@ -1,8 +1,14 @@
 import json
 import re
+import hashlib
+import shutil
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 from core.models.project import Project
+from core.models.media import GifMedia, ImageMedia, Media, VideoMedia
+from core.media_processor import MEDIA_SUBDIR
 from core.voiceover import AUDIO_SUBDIR, voiceover_relative_path
 from config import PROJECTS_DIR
 from services.voiceover_service import write_project_voiceover
@@ -83,6 +89,7 @@ def create_and_save_project(
     dir_name = validate_project_title_for_storage(title)
     project_dir = PROJECTS_DIR / dir_name
     project_dir.mkdir(parents=True, exist_ok=True)
+    (project_dir / MEDIA_SUBDIR).mkdir(parents=True, exist_ok=True)
 
     voiceover_rel: str | None = None
     if narration is not None:
@@ -113,3 +120,119 @@ def is_project_title_unique(title: str, projects_dir: Path | None = None) -> boo
         if item.is_dir() and item.name.casefold() == normalized:
             return False
     return True
+
+
+def _guess_ext_from_url(url: str, *, fallback: str) -> str:
+    path = urllib.parse.urlparse(url).path
+    ext = Path(path).suffix.lower()
+    if ext and 1 < len(ext) <= 6:
+        return ext
+    return fallback
+
+
+def _download_url_to_path(url: str, dest_path: Path, *, timeout_s: float = 20.0) -> None:
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+        data = resp.read()
+    dest_path.write_bytes(data)
+
+
+def _ensure_media_persisted(project_dir: Path, segment_id: int, media: Media) -> Media:
+    """Return a Media with a stable file_path under media/ (downloading/copying if needed)."""
+    media_dir = project_dir / MEDIA_SUBDIR
+    media_dir.mkdir(parents=True, exist_ok=True)
+
+    # If already a file_path, ensure it's inside media/.
+    if media.file_path:
+        src = Path(media.file_path)
+        if not src.is_absolute():
+            # treat as project-relative
+            src = (project_dir / src).resolve()
+        if src.is_file():
+            try:
+                src.relative_to(media_dir.resolve())
+                # Already in media dir, keep as relative path for portability
+                rel = src.relative_to(project_dir).as_posix()
+                if isinstance(media, ImageMedia):
+                    return ImageMedia(file_path=rel)
+                if isinstance(media, GifMedia):
+                    return GifMedia(segment_id=segment_id, file_path=rel)
+                if isinstance(media, VideoMedia):
+                    return VideoMedia(segment_id=segment_id, file_path=rel, start_timestamp=media.start_timestamp)
+            except ValueError:
+                pass
+
+            # Copy into media dir
+            ext = src.suffix.lower() or (
+                ".jpg" if isinstance(media, ImageMedia) else ".gif" if isinstance(media, GifMedia) else ".mp4"
+            )
+            name = f"{segment_id}_{hashlib.sha256(str(src).encode('utf-8')).hexdigest()[:16]}{ext}"
+            dest = media_dir / name
+            if not dest.exists():
+                shutil.copyfile(src, dest)
+            rel = dest.relative_to(project_dir).as_posix()
+            if isinstance(media, ImageMedia):
+                return ImageMedia(file_path=rel)
+            if isinstance(media, GifMedia):
+                return GifMedia(file_path=rel)
+            if isinstance(media, VideoMedia):
+                return VideoMedia(file_path=rel, start_timestamp=media.start_timestamp)
+
+        return media
+
+    # Otherwise, download from URL if present
+    if media.url:
+        url = media.url
+        fallback_ext = ".jpg" if isinstance(media, ImageMedia) else ".gif" if isinstance(media, GifMedia) else ".mp4"
+        ext = _guess_ext_from_url(url, fallback=fallback_ext)
+        name = f"{segment_id}_{hashlib.sha256(url.encode('utf-8')).hexdigest()[:16]}{ext}"
+        dest = media_dir / name
+        if not dest.exists():
+            _download_url_to_path(url, dest)
+        rel = dest.relative_to(project_dir).as_posix()
+        if isinstance(media, ImageMedia):
+            return ImageMedia(file_path=rel)
+        if isinstance(media, GifMedia):
+            return GifMedia(segment_id=segment_id, file_path=rel)
+        if isinstance(media, VideoMedia):
+            return VideoMedia(segment_id=segment_id, file_path=rel, start_timestamp=media.start_timestamp)
+
+    return media
+
+
+def save_project(project: Project, projects_dir: Path | None = None) -> Path:
+    """Persist an existing in-memory project to disk.
+
+    - Ensures `<project>/media/` exists.
+    - If a segment has media with a URL, downloads it into `media/` and converts to `file_path`.
+    - Writes `project.json`.
+    """
+    projects_dir = PROJECTS_DIR if projects_dir is None else projects_dir
+    dir_name = validate_project_title_for_storage(project.title)
+    project_dir = projects_dir / dir_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+    (project_dir / MEDIA_SUBDIR).mkdir(parents=True, exist_ok=True)
+
+    # Materialize selected media to media/ folder (only for attached media)
+    for seg in project.segments:
+        if seg.media is None:
+            continue
+        try:
+            seg.media = _ensure_media_persisted(project_dir, seg.id, seg.media)
+        except Exception:
+            # Don't block saving the rest of the project on a single media failure
+            continue
+
+    json_path = project_dir / PROJECT_JSON_FILENAME
+    json_path.write_text(
+        json.dumps(project.to_dict(), indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return json_path

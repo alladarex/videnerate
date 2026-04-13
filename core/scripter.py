@@ -39,7 +39,7 @@ def segment_narration(
         narration,
         merge_last=False,
         model="deepseek-reasoner",
-        max_tokens=2000,
+        max_tokens=4000,
         temperature=0.6
         ):
     """Splits narration into coherent segments."""

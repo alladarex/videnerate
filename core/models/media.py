@@ -30,22 +30,24 @@ class ImageMedia(Media):
         super().__init__(file_path, url)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"type": "image", "file_path": self.file_path, "url": self.url}
+        return {
+            "type": "image",
+            "file_path": self.file_path,
+            "url": self.url,
+        }
 
     def render_media(self) -> None:
         pass
 
 
 class VideoMedia(Media):
-    def __init__(self, segment_id: int, file_path: str = None, url: str = None, start_timestamp: float = 0):
+    def __init__(self, file_path: str = None, url: str = None, start_timestamp: float = 0):
         super().__init__(file_path, url)
-        self.segment_id = segment_id
         self.start_timestamp = start_timestamp
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "type": "video",
-            "segment_id": self.segment_id,
             "file_path": self.file_path,
             "url": self.url,
             "start_timestamp": self.start_timestamp,
@@ -56,14 +58,12 @@ class VideoMedia(Media):
 
 
 class GifMedia(Media):
-    def __init__(self, segment_id: int, file_path: str = None, url: str = None):
+    def __init__(self, file_path: str = None, url: str = None):
         super().__init__(file_path, url)
-        self.segment_id = segment_id
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "type": "gif",
-            "segment_id": self.segment_id,
             "file_path": self.file_path,
             "url": self.url,
         }
@@ -79,17 +79,18 @@ def media_from_dict(data: dict[str, Any]) -> Media:
         raise ValueError("media payload is empty")
     kind = data.get("type")
     if kind == "image":
-        return ImageMedia(file_path=data.get("file_path"), url=data.get("url"))
+        return ImageMedia(
+            file_path=data.get("file_path"),
+            url=data.get("url"),
+        )
     if kind == "video":
         return VideoMedia(
-            segment_id=data["segment_id"],
             file_path=data.get("file_path"),
             url=data.get("url"),
             start_timestamp=float(data.get("start_timestamp", 0)),
         )
     if kind == "gif":
         return GifMedia(
-            segment_id=data["segment_id"],
             file_path=data.get("file_path"),
             url=data.get("url"),
         )
