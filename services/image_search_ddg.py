@@ -94,7 +94,7 @@ def _fetch_ddg_thumb_results(
     return images[:limit]
 
 
-def fetch_image_results(
+def fetch_google_image_results(
     query: str, *, limit: int = 10, timeout_s: float = 12.0
 ) -> list[tuple[str, bytes]]:
     """Fetch (source_url, thumbnail_bytes) results for a query (DDG only)."""

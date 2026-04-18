@@ -4,10 +4,10 @@ from PySide6.QtCore import QEvent, QObject, Qt, Signal
 from PySide6.QtGui import QMouseEvent, QPixmap
 from PySide6.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
-from config import PROJECTS_DIR
 from core.models.segment import Segment
 from ui.styles.qss import HIDE_SCROLLBARS, SEGMENT_TILE_EXTRA, TILE_FRAME
 from ui.widgets.tile_frame import TileFrame
+from ui.widgets.segment_view_media_preview import load_persisted_media_pixmap
 from ui.widgets.tile_pixmap import (
     inner_preview_edge,
     load_scaled_pixmap,
@@ -42,7 +42,7 @@ class SegmentTile(TileFrame):
         segment: Segment,
         *,
         size_px: int = 180,
-        project_title: str | None = None,
+        project_title: str,
         parent: QWidget | None = None,
     ) -> None:
         self._segment = segment
@@ -107,28 +107,19 @@ class SegmentTile(TileFrame):
         self._thumb_bytes = data
         self.refresh_media()
 
-    def _resolve_media_path(self, rel_or_abs: str) -> Path:
-        p = Path(rel_or_abs)
-        if p.is_absolute():
-            return p
-        if self._project_title:
-            return (PROJECTS_DIR / self._project_title / p).resolve()
-        return p.resolve()
-
     def refresh_media(self) -> None:
-        if self._media_label is None:
-            return
+        """Draw this segment tile's media preview.
 
-        # Prefer runtime thumbnail bytes if present
-        if self._thumb_bytes:
-            target = inner_preview_edge(self._size_px, reserved=40)
-            pixmap = load_scaled_pixmap(self._thumb_bytes, target)
-            if pixmap is not None:
-                self._media_label.setPixmap(pixmap)
-                self._media_label.setText("")
-                return
+        Priority (first match wins):
+        1. Empty state icon - segment has no media assigned yet.
+        2. Saved file on disk - media persisted to project.json (`file_path`).
+        3. Fresh preview bytes - set from runtime selection (`self._thumb_bytes`).
+        4. Fallback label - media exists but no drawable preview is available.
+        """
 
         media = self._segment.media
+
+        # 1) Empty state (plus) icon when nothing is selected yet
         if media is None:
             icon_path = _default_plus_icon_path()
             icon_edge = max(1, int(self._size_px * 0.35))
@@ -140,17 +131,31 @@ class SegmentTile(TileFrame):
                 self._media_label.setText("+")
             return
 
-        # If persisted to file_path, render it.
+        # Preview area is roughly the tile minus padding, keep scaling stable
+        target = inner_preview_edge(self._size_px, reserved=40)
+
+        # 2) Persisted media (project folder / relative path in project.json)
         if getattr(media, "file_path", None):
-            path = self._resolve_media_path(media.file_path)
-            target = inner_preview_edge(self._size_px, reserved=40)
-            pixmap = load_scaled_pixmap_from_path(path, target)
+            pixmap = load_persisted_media_pixmap(
+                media=media,
+                tile_size_px=self._size_px,
+                reserved=40,
+                project_title=self._project_title,
+            )
             if pixmap is not None:
                 self._media_label.setPixmap(pixmap)
                 self._media_label.setText("")
                 return
 
-        # Otherwise (URL-only, video, etc.) show a simple indicator for now
+        # 3) In-memory preview bytes (e.g. right after clicking a result tile)
+        if self._thumb_bytes:
+            pixmap = load_scaled_pixmap(self._thumb_bytes, target)
+            if pixmap is not None:
+                self._media_label.setPixmap(pixmap)
+                self._media_label.setText("")
+                return
+
+        # 4) Nothing drawable yet, show a fallback label
         self._media_label.setPixmap(QPixmap())
         self._media_label.setText("Media")
 

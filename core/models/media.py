@@ -1,6 +1,11 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
+IMAGE_MEDIA = "image"
+VIDEO_MEDIA = "video"
+GIF_MEDIA = "gif"
+ALL_MEDIA = (IMAGE_MEDIA, VIDEO_MEDIA, GIF_MEDIA)
+
 
 class Media(ABC):
     def __init__(self, file_path: str = None, url: str = None):
@@ -31,7 +36,7 @@ class ImageMedia(Media):
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "type": "image",
+            "type": IMAGE_MEDIA,
             "file_path": self.file_path,
             "url": self.url,
         }
@@ -47,7 +52,7 @@ class VideoMedia(Media):
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "type": "video",
+            "type": VIDEO_MEDIA,
             "file_path": self.file_path,
             "url": self.url,
             "start_timestamp": self.start_timestamp,
@@ -63,7 +68,7 @@ class GifMedia(Media):
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "type": "gif",
+            "type": GIF_MEDIA,
             "file_path": self.file_path,
             "url": self.url,
         }
@@ -78,18 +83,18 @@ def media_from_dict(data: dict[str, Any]) -> Media:
     if not data:
         raise ValueError("media payload is empty")
     kind = data.get("type")
-    if kind == "image":
+    if kind == IMAGE_MEDIA:
         return ImageMedia(
             file_path=data.get("file_path"),
             url=data.get("url"),
         )
-    if kind == "video":
+    if kind == VIDEO_MEDIA:
         return VideoMedia(
             file_path=data.get("file_path"),
             url=data.get("url"),
             start_timestamp=float(data.get("start_timestamp", 0)),
         )
-    if kind == "gif":
+    if kind == GIF_MEDIA:
         return GifMedia(
             file_path=data.get("file_path"),
             url=data.get("url"),

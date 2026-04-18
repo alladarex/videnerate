@@ -1,5 +1,3 @@
-"""Shared pixmap helpers for tile previews."""
-
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -7,7 +5,7 @@ from PySide6.QtGui import QPixmap
 
 
 def inner_preview_edge(tile_size_px: int, *, reserved: int) -> int:
-    """Return the square edge for inner preview rendering.
+    """Return the tile edge for inner preview rendering.
 
     Use one reserved constant per layout type (project tile, media body, result tile)
     so spacing choices stay explicit while scaling stays centralized.
@@ -16,7 +14,7 @@ def inner_preview_edge(tile_size_px: int, *, reserved: int) -> int:
 
 
 def load_scaled_pixmap(data: bytes, target_edge: int) -> QPixmap | None:
-    """Load bytes and return a smooth pixmap, or None if invalid."""
+    """Load bytes and return a scaled pixmap, or None if invalid."""
     pm = QPixmap()
     if not pm.loadFromData(data) or pm.isNull():
         return None

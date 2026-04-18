@@ -59,7 +59,7 @@ class SegmentView(QWidget):
         self._grid_host: QWidget | None = None
         self._grid: QGridLayout | None = None
         self._cache = SegmentSearchCache()
-        self._grid_controller: SegmentViewGridController | None = None
+        self._grid_controller: SegmentViewGridController
 
         self._nav_prev: QPushButton | None = None
         self._nav_next: QPushButton | None = None
@@ -206,7 +206,7 @@ class SegmentView(QWidget):
         root.addWidget(self._scroll, 1)
         root.addWidget(bottom_row)
 
-        self._rebuild_inner_grid()
+        self._grid_controller.rebuild_grid()
         self._refresh_nav_display()
 
     def _current_segment(self) -> Segment:
@@ -219,19 +219,18 @@ class SegmentView(QWidget):
                 break
         else:
             raise ValueError(f"Segment id {segment.id} not found in project")
-        if self._grid_controller is not None:
-            self._grid_controller.set_segment(self._current_segment())
+        self._grid_controller.set_segment(self._current_segment())
         self._refresh_nav_display()
 
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
-        self._rebuild_inner_grid()
+        self._grid_controller.rebuild_grid()
         # Needed if segment view is accessible without a prior mouse click in project view
         # self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
-        self._rebuild_inner_grid()
+        self._grid_controller.rebuild_grid()
 
     def _go_prev(self) -> None:
         """Navigate to previous segment when available."""
@@ -254,8 +253,7 @@ class SegmentView(QWidget):
         if index == self._current_index:
             return
         self._current_index = index
-        if self._grid_controller is not None:
-            self._grid_controller.set_segment(self._current_segment())
+        self._grid_controller.set_segment(self._current_segment())
         self._refresh_nav_display()
 
     def _refresh_nav_display(self) -> None:
@@ -275,7 +273,3 @@ class SegmentView(QWidget):
         if self._dots_scroll is not None and self._dot_buttons and self._current_index < len(self._dot_buttons):
             self._dots_scroll.ensureWidgetVisible(self._dot_buttons[self._current_index])
 
-    def _rebuild_inner_grid(self) -> None:
-        if self._grid_controller is None:
-            return
-        self._grid_controller.rebuild_grid()

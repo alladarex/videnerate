@@ -163,9 +163,9 @@ def _ensure_media_persisted(project_dir: Path, segment_id: int, media: Media) ->
                 if isinstance(media, ImageMedia):
                     return ImageMedia(file_path=rel)
                 if isinstance(media, GifMedia):
-                    return GifMedia(segment_id=segment_id, file_path=rel)
+                    return GifMedia(file_path=rel)
                 if isinstance(media, VideoMedia):
-                    return VideoMedia(segment_id=segment_id, file_path=rel, start_timestamp=media.start_timestamp)
+                    return VideoMedia(file_path=rel, start_timestamp=media.start_timestamp)
             except ValueError:
                 pass
 
@@ -200,9 +200,9 @@ def _ensure_media_persisted(project_dir: Path, segment_id: int, media: Media) ->
         if isinstance(media, ImageMedia):
             return ImageMedia(file_path=rel)
         if isinstance(media, GifMedia):
-            return GifMedia(segment_id=segment_id, file_path=rel)
+            return GifMedia(file_path=rel)
         if isinstance(media, VideoMedia):
-            return VideoMedia(segment_id=segment_id, file_path=rel, start_timestamp=media.start_timestamp)
+            return VideoMedia(file_path=rel, start_timestamp=media.start_timestamp)
 
     return media
 

@@ -1,10 +1,136 @@
 {
   "title": "example",
-  "created_at": "2026-04-08T14:17:34.437434",
+  "created_at": "2026-04-17T13:43:37.760863",
   "segments": [
     {
       "id": 0,
-      "text": "An example is a specific case or modelused to show what something is like or how it works.It is a clear illustration that helps explain a rule, an idea, or a general statement.We use examples every day to make things easier to understand.For instance, a teacher might use the story of a famous scientist as an example of perseverance.In a dictionary, you find an example sentence to see how a word is actually used.The most common understanding of an example is this helpful tool for teaching and clarity.An interesting fact is that our brains are naturally wired to learn from examples.Studies show that people often understand a new concept faster and remember it betterwhen it is presented with a concrete example rather than just an abstract description.This is why stories and real-world cases are such powerful tools for learning.",
+      "text": "An example is a specific case or model",
+      "media": {
+        "type": "image",
+        "file_path": "media/0_70153881bf08ed58.jpg",
+        "url": null
+      }
+    },
+    {
+      "id": 1,
+      "text": "that shows what something is like or how it works.",
+      "media": {
+        "type": "image",
+        "file_path": "media/1_f299d1ba31348449.jpeg",
+        "url": null
+      }
+    },
+    {
+      "id": 2,
+      "text": "It is a clear illustration",
+      "media": {
+        "type": "video",
+        "file_path": "media/2_0e2caa1e564165f8.mp4",
+        "url": null,
+        "start_timestamp": 0.0
+      }
+    },
+    {
+      "id": 3,
+      "text": "used to explain a rule, an idea, or a general statement.",
+      "media": {
+        "type": "image",
+        "file_path": "media/3_6d5186535d1d171e.jpeg",
+        "url": null
+      }
+    },
+    {
+      "id": 4,
+      "text": "We use examples every day",
+      "media": {
+        "type": "image",
+        "file_path": "media/4_9a01e68a64d173e8.jpeg",
+        "url": null
+      }
+    },
+    {
+      "id": 5,
+      "text": "to make things easier to understand.",
+      "media": {
+        "type": "video",
+        "file_path": "media/5_d280dda4dd633684.mp4",
+        "url": null,
+        "start_timestamp": 0
+      }
+    },
+    {
+      "id": 6,
+      "text": "For instance, a teacher might use a simple math problem",
+      "media": null
+    },
+    {
+      "id": 7,
+      "text": "as an example before giving a harder test.",
+      "media": null
+    },
+    {
+      "id": 8,
+      "text": "A friend might show you a photo",
+      "media": null
+    },
+    {
+      "id": 9,
+      "text": "as an example of a place they want to visit.",
+      "media": null
+    },
+    {
+      "id": 10,
+      "text": "In all these cases, the example acts as a helpful guide.",
+      "media": null
+    },
+    {
+      "id": 11,
+      "text": "It makes abstract thoughts concrete",
+      "media": null
+    },
+    {
+      "id": 12,
+      "text": "and connects new information to what we already know.",
+      "media": null
+    },
+    {
+      "id": 13,
+      "text": "An interesting fact about examples",
+      "media": null
+    },
+    {
+      "id": 14,
+      "text": "is that our brains are wired to learn from them",
+      "media": null
+    },
+    {
+      "id": 15,
+      "text": "more effectively than from abstract rules alone.",
+      "media": null
+    },
+    {
+      "id": 16,
+      "text": "Studies show that people remember information better",
+      "media": null
+    },
+    {
+      "id": 17,
+      "text": "and can apply it more easily",
+      "media": null
+    },
+    {
+      "id": 18,
+      "text": "when it is presented with a clear, relatable example.",
+      "media": null
+    },
+    {
+      "id": 19,
+      "text": "This is why stories and real-world cases",
+      "media": null
+    },
+    {
+      "id": 20,
+      "text": "are such powerful teaching tools.",
       "media": null
     }
   ],
