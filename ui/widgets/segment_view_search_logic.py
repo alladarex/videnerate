@@ -17,6 +17,7 @@ def build_source_distribution(
     *,
     limit: int,
     use_google: bool,
+    use_giphy: bool,
     use_pexels_images: bool,
     use_pexels_videos: bool,
     use_pixabay_images: bool,
@@ -26,6 +27,8 @@ def build_source_distribution(
     active_groups: list[str] = []
     if use_google:
         active_groups.append("google")
+    if use_giphy:
+        active_groups.append("giphy")
     pexels_children = [
         c
         for c, enabled in (
@@ -54,6 +57,8 @@ def build_source_distribution(
     
     if "google" in group_distribution:
         source_distribution["google"] = group_distribution["google"]
+    if "giphy" in group_distribution:
+        source_distribution["giphy"] = group_distribution["giphy"]
     if "pexels" in group_distribution:
         source_distribution.update(
             split_evenly(group_distribution["pexels"], pexels_children)

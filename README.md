@@ -8,7 +8,7 @@ A simple, single-page web app designed to help users create short-form videos ef
 - Convert text to speech using Google TTS or ElevenLabs
 - Split narration into digestible segments
 - Auto-generate keywords for visual content search
-- Search and select images/videos from google, Pexels and Pixabay
+- Search and select images/videos/GIFs from Google, Giphy, Pexels, and Pixabay
 - Export final video with synchronized narration and visuals
 
 ## Setup

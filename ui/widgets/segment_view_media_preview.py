@@ -3,7 +3,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QLabel
 
 from config import PROJECTS_DIR
-from core.models.media import Media, VideoMedia, ImageMedia
+from core.models.media import GifMedia, ImageMedia, Media, VideoMedia
 from core.models.segment import Segment
 from services.media_thumbnail import extract_video_frame_bytes
 from ui.widgets.tile_pixmap import (
@@ -39,7 +39,7 @@ def load_persisted_media_pixmap(
         frame_bytes = extract_video_frame_bytes(path)
         if frame_bytes:
             pixmap = load_scaled_pixmap(frame_bytes, target)
-    if isinstance(media, ImageMedia):
+    if isinstance(media, (ImageMedia, GifMedia)):
         pixmap = load_scaled_pixmap_from_path(path, target)
     return pixmap
 

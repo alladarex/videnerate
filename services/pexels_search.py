@@ -27,7 +27,8 @@ def _fetch_bytes(url: str, *, timeout_s: float) -> bytes | None:
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
             data = resp.read()
         return data or None
-    except Exception:
+    except Exception as e:
+        print(f"[pexels] _fetch_bytes failed for {url}: {e}")
         return None
 
 
@@ -46,7 +47,8 @@ def fetch_pexels_image_results(
     )
     try:
         payload = _fetch_json(url, timeout_s=timeout_s)
-    except Exception:
+    except Exception as e:
+        print(f"[pexels] fetch_pexels_image_results failed for query '{q}': {e}")
         return []
 
     photos = payload.get("photos") or []
@@ -87,7 +89,8 @@ def fetch_pexels_video_results(
     )
     try:
         payload = _fetch_json(url, timeout_s=timeout_s)
-    except Exception:
+    except Exception as e:
+        print(f"[pexels] fetch_pexels_video_results failed for query '{q}': {e}")
         return []
 
     videos = payload.get("videos") or []

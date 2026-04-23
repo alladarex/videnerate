@@ -28,7 +28,8 @@ def _fetch_bytes(url: str, *, timeout_s: float) -> bytes | None:
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
             data = resp.read()
         return data or None
-    except Exception:
+    except Exception as e:
+        print(f"[pixabay] _fetch_bytes failed for {url}: {e}")
         return None
 
 
@@ -41,7 +42,8 @@ def fetch_pixabay_image_results(
     if not q:
         return []
 
-    per_page = max(1, min(int(limit), 200))
+    # Pixabay requires per_page >= 3
+    per_page = max(3, min(limit, 200))
     url = "https://pixabay.com/api/?" + urllib.parse.urlencode(
         {
             "key": PIXABAY_API_KEY,
@@ -52,7 +54,8 @@ def fetch_pixabay_image_results(
     )
     try:
         payload = _fetch_json(url, timeout_s=timeout_s)
-    except Exception:
+    except Exception as e:
+        print(f"[pixabay] fetch_pixabay_image_results failed for query '{q}': {e}")
         return []
 
     hits = payload.get("hits") or []
@@ -88,7 +91,8 @@ def fetch_pixabay_video_results(
     if not q:
         return []
 
-    per_page = max(1, min(int(limit), 200))
+    # Pixabay requires per_page >= 3
+    per_page = max(3, min(limit, 200))
     url = "https://pixabay.com/api/videos/?" + urllib.parse.urlencode(
         {
             "key": PIXABAY_API_KEY,
@@ -99,7 +103,8 @@ def fetch_pixabay_video_results(
     )
     try:
         payload = _fetch_json(url, timeout_s=timeout_s)
-    except Exception:
+    except Exception as e:
+        print(f"[pixabay] fetch_pixabay_video_results failed for query '{q}': {e}")
         return []
 
     hits = payload.get("hits") or []

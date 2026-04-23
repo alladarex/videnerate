@@ -1,4 +1,5 @@
-from core.models.media import IMAGE_MEDIA, VIDEO_MEDIA
+from core.models.media import GIF_MEDIA, IMAGE_MEDIA, VIDEO_MEDIA
+from services.giphy_search import fetch_giphy_gif_results
 from services.image_search_ddg import fetch_google_image_results
 from services.pexels_search import fetch_pexels_image_results, fetch_pexels_video_results
 from services.pixabay_search import fetch_pixabay_image_results, fetch_pixabay_video_results
@@ -34,6 +35,13 @@ def run_distributed_search(
         add_items(
             IMAGE_MEDIA,
             safe_fetch(lambda: fetch_google_image_results(query, limit=google_share)),
+        )
+
+    giphy_share = source_distribution.get("giphy", 0)
+    if giphy_share > 0:
+        add_items(
+            GIF_MEDIA,
+            safe_fetch(lambda: fetch_giphy_gif_results(query, limit=giphy_share)),
         )
 
     pexels_image_share = source_distribution.get("pexels_image", 0)

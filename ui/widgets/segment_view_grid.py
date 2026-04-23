@@ -16,6 +16,7 @@ from core.models.media import (
     ALL_MEDIA,
     GIF_MEDIA,
     IMAGE_MEDIA,
+    GifMedia,
     ImageMedia,
     VIDEO_MEDIA,
     VideoMedia,
@@ -31,7 +32,7 @@ from ui.widgets.segment_view_search_logic import (
     build_source_distribution,
     to_cached_results,
 )
-from ui.widgets.segment_view_result_tiles import ImageTile, VideoTile
+from ui.widgets.segment_view_result_tiles import GifTile, ImageTile, VideoTile
 
 
 # Either this SegmentViewGridController has to inherit QObject
@@ -181,6 +182,15 @@ class SegmentViewGridController:
                 )
             )
             return tile
+        if media_type == GIF_MEDIA:
+            tile = GifTile(size_px=self._tile_size_px, parent=self._grid_host)
+            tile.set_thumbnail_bytes(thumb)
+            tile.clicked.connect(
+                lambda u=url, b=bytes(thumb): self._select_media(
+                    u, b, media_type=GIF_MEDIA
+                )
+            )
+            return tile
         raise ValueError(f"Unknown media type: {media_type}")
 
     def _clear_results(self) -> None:
@@ -208,6 +218,7 @@ class SegmentViewGridController:
         settings = search_settings_state()
         limit = settings.limit
         use_google = settings.google
+        use_giphy = settings.giphy
         use_pexels_images = settings.pexels_image
         use_pexels_videos = settings.pexels_video
         use_pixabay_images = settings.pixabay_image
@@ -215,6 +226,7 @@ class SegmentViewGridController:
 
         if not (
             use_google
+            or use_giphy
             or use_pexels_images
             or use_pexels_videos
             or use_pixabay_images
@@ -226,6 +238,7 @@ class SegmentViewGridController:
         source_distribution = build_source_distribution(
             limit=limit,
             use_google=use_google,
+            use_giphy=use_giphy,
             use_pexels_images=use_pexels_images,
             use_pexels_videos=use_pexels_videos,
             use_pixabay_images=use_pixabay_images,
@@ -284,7 +297,7 @@ class SegmentViewGridController:
         if media_type == VIDEO_MEDIA:
             self._segment.set_media(VideoMedia(url=url))
         if media_type == GIF_MEDIA:
-            pass
+            self._segment.set_media(GifMedia(url=url))
         self._selected_url = url
         self._on_media_selected(self._segment.id, thumb_bytes)
         self._sync_media_preview(thumb_bytes=thumb_bytes)
