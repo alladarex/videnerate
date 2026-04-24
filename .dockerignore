@@ -1,0 +1,22 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+.venv
+venv
+.env
+
+# IDE
+.vscode
+.idea
+
+# Local project data (too big, not needed to build).
+# Keep projects/example/ so the image ships with a sample project
+# users can load to try the app.
+projects/*
+!projects/example
+!projects/example/**
