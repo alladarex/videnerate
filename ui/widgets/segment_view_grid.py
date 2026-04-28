@@ -27,6 +27,7 @@ from ui.widgets.search_settings import search_settings_state
 from ui.widgets.segment_view_cache import SegmentSearchCache
 from ui.widgets.segment_view_base_tiles import build_base_tiles
 from ui.widgets.segment_view_media_preview import refresh_media_preview
+from ui.widgets.segment_view_preview_cache import SegmentPreviewTempCache
 from ui.widgets.segment_view_search_runner import run_distributed_search
 from ui.widgets.segment_view_search_logic import (
     build_source_distribution,
@@ -76,9 +77,11 @@ class SegmentViewGridController:
         self._media_preview: QLabel | None = None
         self._selected_url: str | None = None
         self._thumb_by_url: dict[str, bytes] = {}
+        self._preview_temp_cache = SegmentPreviewTempCache(project_title)
 
     def set_segment(self, segment: Segment) -> None:
         """Switch active segment and rebuild visible tiles for that segment."""
+        self._preview_temp_cache.activate_segment(segment.id)
         self._segment = segment
         self._reset_tiles()
         self.rebuild_grid()
@@ -164,8 +167,14 @@ class SegmentViewGridController:
         self.search_status.setText(status)
 
     def _build_result_tile(self, *, media_type: str, url: str, thumb: bytes) -> QWidget:
+        seg_id = self._segment.id
         if media_type == VIDEO_MEDIA:
-            tile = VideoTile(size_px=self._tile_size_px, parent=self._grid_host)
+            tile = VideoTile(
+                size_px=self._tile_size_px,
+                media_url=url,
+                cache_path=self._preview_temp_cache.path_for_url(url, seg_id, fallback_ext=".mp4"),
+                parent=self._grid_host,
+            )
             tile.set_thumbnail_bytes(thumb)
             tile.clicked.connect(
                 lambda u=url, b=bytes(thumb): self._select_media(
@@ -183,7 +192,12 @@ class SegmentViewGridController:
             )
             return tile
         if media_type == GIF_MEDIA:
-            tile = GifTile(size_px=self._tile_size_px, parent=self._grid_host)
+            tile = GifTile(
+                size_px=self._tile_size_px,
+                media_url=url,
+                cache_path=self._preview_temp_cache.path_for_url(url, seg_id, fallback_ext=".gif"),
+                parent=self._grid_host,
+            )
             tile.set_thumbnail_bytes(thumb)
             tile.clicked.connect(
                 lambda u=url, b=bytes(thumb): self._select_media(
