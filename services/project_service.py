@@ -207,12 +207,55 @@ def _ensure_media_persisted(project_dir: Path, segment_id: int, media: Media) ->
     return media
 
 
+def _cleanup_unused_project_media(project_dir: Path, project: Project) -> None:
+    """Delete unreferenced files in `<project>/media/` based on current segment media."""
+    media_dir = project_dir / MEDIA_SUBDIR
+    if not media_dir.is_dir():
+        return
+
+    referenced_files: set[Path] = set()
+    for seg in project.segments:
+        media = seg.media
+        if media is None or not media.file_path:
+            continue
+
+        candidate = Path(media.file_path)
+        resolved = (
+            candidate.resolve()
+            if candidate.is_absolute()
+            else (project_dir / candidate).resolve()
+        )
+        try:
+            resolved.relative_to(media_dir.resolve())
+        except ValueError:
+            # Ignore any path outside this project's media directory.
+            continue
+        if resolved.is_file():
+            referenced_files.add(resolved)
+
+    for media_file in media_dir.iterdir():
+        if not media_file.is_file():
+            continue
+        try:
+            resolved_media_file = media_file.resolve()
+        except OSError:
+            continue
+        if resolved_media_file in referenced_files:
+            continue
+        try:
+            media_file.unlink()
+        except OSError:
+            # Best effort cleanup, do not block save for deletion failures
+            continue
+
+
 def save_project(project: Project, projects_dir: Path | None = None) -> Path:
     """Persist an existing in-memory project to disk.
 
     - Ensures `<project>/media/` exists.
     - If a segment has media with a URL, downloads it into `media/` and converts to `file_path`.
     - Writes `project.json`.
+    - Cleans up unused media files from `<project>/media/`.
     """
     projects_dir = PROJECTS_DIR if projects_dir is None else projects_dir
     dir_name = validate_project_title_for_storage(project.title)
@@ -235,4 +278,5 @@ def save_project(project: Project, projects_dir: Path | None = None) -> Path:
         json.dumps(project.to_dict(), indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
+    _cleanup_unused_project_media(project_dir, project)
     return json_path
