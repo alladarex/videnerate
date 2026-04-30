@@ -15,6 +15,7 @@ from services.voiceover_service import write_project_voiceover
 
 PROJECT_JSON_FILENAME = "project.json"
 NARRATION_FILENAME = "narration.txt"
+SEGMENTS_FILENAME = "segments.txt"
 
 INVALID_FOLDER_CHARS = set('<>:"/\\|?*')
 
@@ -82,6 +83,11 @@ def create_project_from_segments(
     """Create a new in-memory Project from segment texts (no saving)."""
     return Project(segments=segments, title=title, voiceover_path=voiceover_path)
 
+
+def _write_segments_file(project_dir: Path, segments: list[str]) -> None:
+    """Persist all segment texts into `segments.txt`, one segment per line."""
+    (project_dir / SEGMENTS_FILENAME).write_text("\n".join(segments), encoding="utf-8")
+
 def create_and_save_project(
     segments: list[str], title: str = "Untitled", narration: str | None = None
 ) -> Project:
@@ -107,6 +113,7 @@ def create_and_save_project(
         json.dumps(payload, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
+    _write_segments_file(project_dir, [seg.text for seg in project.segments])
     return project
 
 def is_project_title_unique(title: str, projects_dir: Path | None = None) -> bool:
@@ -278,5 +285,6 @@ def save_project(project: Project, projects_dir: Path | None = None) -> Path:
         json.dumps(project.to_dict(), indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
+    _write_segments_file(project_dir, [seg.text for seg in project.segments])
     _cleanup_unused_project_media(project_dir, project)
     return json_path

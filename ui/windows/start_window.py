@@ -27,14 +27,17 @@ class NarrationGenerationWorker(QObject):
     finished = Signal(str)
     failed = Signal(str)
 
-    def __init__(self, video_idea: str) -> None:
+    def __init__(self, video_idea: str, selected_model: str) -> None:
         super().__init__()
         self._video_idea = video_idea
+        self._selected_model = selected_model
 
     @Slot()
     def run(self) -> None:
         try:
-            narration = generate_narration_from_video_idea(self._video_idea)
+            narration = generate_narration_from_video_idea(
+                self._video_idea, selected_model=self._selected_model
+            )
         except Exception as exc:
             self.failed.emit(str(exc))
             return
@@ -45,15 +48,18 @@ class ProjectCreationWorker(QObject):
     finished = Signal(Project)
     failed = Signal(str)
 
-    def __init__(self, narration: str, project_title: str) -> None:
+    def __init__(self, narration: str, project_title: str, selected_model: str) -> None:
         super().__init__()
         self._narration = narration
         self._project_title = project_title
+        self._selected_model = selected_model
 
     @Slot()
     def run(self) -> None:
         try:
-            segments = get_segments_from_narration(self._narration)
+            segments = get_segments_from_narration(
+                self._narration, selected_model=self._selected_model
+            )
             project = create_and_save_project(
                 segments, title=self._project_title, narration=self._narration
             )
@@ -172,7 +178,9 @@ class StartWindow(QMainWindow):
         self._video_idea_view.set_loading(True)
 
         self._generation_thread = QThread(self)
-        self._generation_worker = NarrationGenerationWorker(video_idea)
+        self._generation_worker = NarrationGenerationWorker(
+            video_idea, selected_model=self._video_idea_view.get_selected_model()
+        )
         self._generation_worker.moveToThread(self._generation_thread)
 
         self._generation_thread.started.connect(self._generation_worker.run)
@@ -256,7 +264,11 @@ class StartWindow(QMainWindow):
         self._narration_view.set_loading(True)
 
         self._project_thread = QThread(self)
-        self._project_worker = ProjectCreationWorker(narration, project_title)
+        self._project_worker = ProjectCreationWorker(
+            narration,
+            project_title,
+            selected_model=self._narration_view.get_selected_model(),
+        )
         self._project_worker.moveToThread(self._project_thread)
 
         self._project_thread.started.connect(self._project_worker.run)

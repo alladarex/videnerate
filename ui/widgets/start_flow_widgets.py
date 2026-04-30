@@ -1,5 +1,7 @@
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QComboBox,
+    QCheckBox,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -78,6 +80,7 @@ class VideoIdeaView(QWidget):
         self.video_idea_input = QPlainTextEdit()
         self.back_button = QPushButton("Back")
         self.generate_button = QPushButton("Generate")
+        self.model_selector = QComboBox()
         self._action_stack = QStackedWidget()
         self._build_ui()
 
@@ -102,6 +105,11 @@ class VideoIdeaView(QWidget):
         generate_row_layout.setContentsMargins(0, 0, 0, 0)
         generate_row_layout.addWidget(self.generate_button)
         generate_row_layout.addStretch()
+        self.model_selector.addItems(
+            ["deepseek-chat", "deepseek-reasoner", "gpt-4o-mini"]
+        )
+        self.model_selector.setCurrentText("deepseek-chat")
+        generate_row_layout.addWidget(self.model_selector)
 
         loading_row = QWidget(self)
         loading_row_layout = QHBoxLayout(loading_row)
@@ -125,6 +133,10 @@ class VideoIdeaView(QWidget):
         self._action_stack.setCurrentIndex(1 if is_loading else 0)
         self.back_button.setEnabled(not is_loading)
         self.generate_button.setEnabled(not is_loading)
+        self.model_selector.setEnabled(not is_loading)
+
+    def get_selected_model(self) -> str:
+        return self.model_selector.currentText()
 
 
 class NarrationEditorView(QWidget):
@@ -137,6 +149,8 @@ class NarrationEditorView(QWidget):
         self.project_title_input = QLineEdit()
         self.back_button = QPushButton("Back")
         self.create_project_button = QPushButton("Create project")
+        self.auto_assign_checkbox = QCheckBox("Auto-Assign")
+        self.model_selector = QComboBox()
         self._action_stack = QStackedWidget()
         self._build_ui()
 
@@ -162,7 +176,13 @@ class NarrationEditorView(QWidget):
         self.project_title_input.setPlaceholderText("Project title")
         create_project_row_layout.addWidget(self.project_title_input)
         create_project_row_layout.addWidget(self.create_project_button)
+        create_project_row_layout.addWidget(self.auto_assign_checkbox)
         create_project_row_layout.addStretch()
+        self.model_selector.addItems(
+            ["deepseek-chat", "deepseek-reasoner", "gpt-4o-mini"]
+        )
+        self.model_selector.setCurrentText("deepseek-reasoner")
+        create_project_row_layout.addWidget(self.model_selector)
 
         loading_row = QWidget(self)
         loading_row_layout = QHBoxLayout(loading_row)
@@ -187,9 +207,13 @@ class NarrationEditorView(QWidget):
         self.back_button.setEnabled(not is_loading)
         self.create_project_button.setEnabled(not is_loading)
         self.project_title_input.setReadOnly(is_loading)
+        self.model_selector.setEnabled(not is_loading)
 
     def set_project_title(self, title: str) -> None:
         self.project_title_input.setText(title)
 
     def get_project_title(self) -> str:
         return self.project_title_input.text().strip()
+
+    def get_selected_model(self) -> str:
+        return self.model_selector.currentText()
