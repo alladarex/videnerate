@@ -1,7 +1,11 @@
 from openai import OpenAI
 import re
 from config import DEEPSEEK_API_KEY, OPENAI_API_KEY
-from core.prompts import SEGMENTATION_SYSTEM_PROMPT, narration_prompt
+from core.prompts import (
+    SEGMENT_KEYWORDS_SYSTEM_PROMPT,
+    SEGMENTATION_SYSTEM_PROMPT,
+    narration_prompt,
+)
 
 _DEEPSEEK_CLIENT = OpenAI(
     api_key=DEEPSEEK_API_KEY,
@@ -34,8 +38,8 @@ def generate_narration(
     max_tokens=1000   
 ):
     """Generates a narration from the input phrase."""
-    # if len(input_phrase) <= 1:
-    #     raise ValueError("input_phrase must be at least 2 letters long")
+    if len(input_phrase) <= 1:
+        raise ValueError("input_phrase must be at least 2 letters long")
     
     prompt = narration_prompt(input_phrase)
     client, default_model = _resolve_provider(selected_model)
@@ -98,11 +102,28 @@ def get_segments(narration: str, selected_model: str = "deepseek-reasoner") -> l
     segments = [line.strip() for line in raw_segments.splitlines() if line.strip()]
     return segments
 
-def merge_segments(segments: list[str], index: int, separator: str = " ") -> list[str]:
-    """Merges two consecutive segments at the given index."""
-    if index < 0 or index >= len(segments) - 1:
-        raise ValueError("Invalid index: cannot merge segment at index {}.".format(index))
-    
-    merged = segments[index].strip() + separator + segments[index + 1].strip()
-    return segments[:index] + [merged] + segments[index + 2:]
+
+def generate_segment_search_plan(
+    segments_payload: str,
+    model=None,
+    selected_model: str = "deepseek-reasoner",
+    temperature: float = 0.2,
+    max_tokens: int = 4000,
+) -> str:
+    """Generate a JSON media search plan from segment payload."""
+    system_prompt = SEGMENT_KEYWORDS_SYSTEM_PROMPT
+    client, default_model = _resolve_provider(selected_model)
+    resolved_model = model or default_model
+
+    response = client.chat.completions.create(
+        model=resolved_model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": segments_payload},
+        ],
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+    return response.choices[0].message.content.strip()
+
 

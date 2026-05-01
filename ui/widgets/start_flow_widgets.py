@@ -217,3 +217,6 @@ class NarrationEditorView(QWidget):
 
     def get_selected_model(self) -> str:
         return self.model_selector.currentText()
+
+    def is_auto_assign_checked(self) -> bool:
+        return self.auto_assign_checkbox.isChecked()

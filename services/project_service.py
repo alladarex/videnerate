@@ -9,13 +9,14 @@ from pathlib import Path
 from core.models.project import Project
 from core.models.media import GifMedia, ImageMedia, Media, VideoMedia
 from core.media_processor import MEDIA_SUBDIR
+from core.scripter import generate_segment_search_plan
 from core.voiceover import AUDIO_SUBDIR, voiceover_relative_path
 from config import PROJECTS_DIR
 from services.voiceover_service import write_project_voiceover
 
 PROJECT_JSON_FILENAME = "project.json"
 NARRATION_FILENAME = "narration.txt"
-SEGMENTS_FILENAME = "segments.txt"
+SEGMENTS_ANALYZED_FILENAME = "segments-analyzed.json"
 
 INVALID_FOLDER_CHARS = set('<>:"/\\|?*')
 
@@ -84,12 +85,31 @@ def create_project_from_segments(
     return Project(segments=segments, title=title, voiceover_path=voiceover_path)
 
 
-def _write_segments_file(project_dir: Path, segments: list[str]) -> None:
-    """Persist all segment texts into `segments.txt`, one segment per line."""
-    (project_dir / SEGMENTS_FILENAME).write_text("\n".join(segments), encoding="utf-8")
+def _write_segments_analyzed_file(
+    project_dir: Path, segments: list[str], selected_model: str
+) -> None:
+    segments_payload = {
+        "available_sources": ["google", "pexels", "pixabay", "giphy"],
+        "segments": [
+            {"id": idx, "text": text}
+            for idx, text in enumerate(segments, start=1)
+        ],
+    }
+    analyzed_text = generate_segment_search_plan(
+        json.dumps(segments_payload, ensure_ascii=False, indent=2),
+        selected_model=selected_model,
+    )
+    (project_dir / SEGMENTS_ANALYZED_FILENAME).write_text(
+        analyzed_text,
+        encoding="utf-8",
+    )
 
 def create_and_save_project(
-    segments: list[str], title: str = "Untitled", narration: str | None = None
+    segments: list[str],
+    title: str = "Untitled",
+    narration: str | None = None,
+    auto_assign: bool = False,
+    selected_model: str = "deepseek-reasoner",
 ) -> Project:
     """Create a new project and save it to the filesystem."""
     dir_name = validate_project_title_for_storage(title)
@@ -113,7 +133,9 @@ def create_and_save_project(
         json.dumps(payload, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
-    _write_segments_file(project_dir, [seg.text for seg in project.segments])
+    if auto_assign:
+        segment_texts = [seg.text for seg in project.segments]
+        _write_segments_analyzed_file(project_dir, segment_texts, selected_model)
     return project
 
 def is_project_title_unique(title: str, projects_dir: Path | None = None) -> bool:
@@ -285,6 +307,5 @@ def save_project(project: Project, projects_dir: Path | None = None) -> Path:
         json.dumps(project.to_dict(), indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
-    _write_segments_file(project_dir, [seg.text for seg in project.segments])
     _cleanup_unused_project_media(project_dir, project)
     return json_path

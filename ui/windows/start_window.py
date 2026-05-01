@@ -48,11 +48,18 @@ class ProjectCreationWorker(QObject):
     finished = Signal(Project)
     failed = Signal(str)
 
-    def __init__(self, narration: str, project_title: str, selected_model: str) -> None:
+    def __init__(
+        self,
+        narration: str,
+        project_title: str,
+        selected_model: str,
+        auto_assign: bool,
+    ) -> None:
         super().__init__()
         self._narration = narration
         self._project_title = project_title
         self._selected_model = selected_model
+        self._auto_assign = auto_assign
 
     @Slot()
     def run(self) -> None:
@@ -61,7 +68,11 @@ class ProjectCreationWorker(QObject):
                 self._narration, selected_model=self._selected_model
             )
             project = create_and_save_project(
-                segments, title=self._project_title, narration=self._narration
+                segments,
+                title=self._project_title,
+                narration=self._narration,
+                auto_assign=self._auto_assign,
+                selected_model=self._selected_model,
             )
         except Exception as exc:
             self.failed.emit(str(exc))
@@ -268,6 +279,7 @@ class StartWindow(QMainWindow):
             narration,
             project_title,
             selected_model=self._narration_view.get_selected_model(),
+            auto_assign=self._narration_view.is_auto_assign_checked(),
         )
         self._project_worker.moveToThread(self._project_thread)
 
