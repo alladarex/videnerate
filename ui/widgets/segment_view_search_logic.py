@@ -1,4 +1,4 @@
-from ui.widgets.segment_view_cache import SegmentSearchResult
+from ui.cache.segment_search_cache import SegmentSearchResult
 
 
 def split_evenly(total: int, targets: list[str]) -> dict[str, int]:

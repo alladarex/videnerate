@@ -1,7 +1,7 @@
 """Grid controller for SegmentView tile state and interaction flow.
 
 This module owns the dynamic tile area inside segment detail view:
-- builds/restores base and result tiles
+- builds/restores base and search result tiles
 - performs asynchronous media search
 - binds tile clicks to segment media selection
 - keeps the media preview tile synchronized with model/cache state
@@ -10,24 +10,25 @@ This module owns the dynamic tile area inside segment detail view:
 import threading
 
 from PySide6.QtCore import QObject, Qt, Signal
-from PySide6.QtWidgets import QGridLayout, QLabel, QLineEdit, QScrollArea, QWidget
+from PySide6.QtWidgets import QGridLayout, QLineEdit, QScrollArea, QWidget
 
 from core.models.media import (
     ALL_MEDIA,
     GIF_MEDIA,
     IMAGE_MEDIA,
+    VIDEO_MEDIA,
     GifMedia,
     ImageMedia,
-    VIDEO_MEDIA,
     VideoMedia,
 )
 from core.models.segment import Segment
-from ui.widgets.segment_tile import column_count_for_viewport
+from ui.utils.grid_layout import column_count_for_viewport
 from ui.widgets.search_settings import search_settings_state
-from ui.widgets.segment_view_cache import SegmentSearchCache
+from ui.cache.segment_search_cache import SegmentSearchCache
 from ui.widgets.segment_view_base_tiles import build_base_tiles
-from ui.widgets.segment_view_media_preview import refresh_media_preview
-from ui.widgets.segment_view_preview_cache import SegmentPreviewTempCache
+from ui.widgets.segment_media_tile import refresh_segment_media_tile
+from ui.cache.segment_preview_cache import SegmentPreviewCache
+from ui.widgets.preview_playback import SharedVideoPreviewBackend
 from ui.widgets.segment_view_search_runner import run_distributed_search
 from ui.widgets.segment_view_search_logic import (
     build_source_distribution,
@@ -54,7 +55,7 @@ class SegmentViewGridController:
         tile_size_px: int,
         grid_spacing: int,
         cache: SegmentSearchCache,
-        project_title: str,
+        preview_cache: SegmentPreviewCache,
         on_media_selected,
     ) -> None:
         self._scroll = scroll
@@ -63,7 +64,6 @@ class SegmentViewGridController:
         self._tile_size_px = int(tile_size_px)
         self._grid_spacing = int(grid_spacing)
         self._cache = cache
-        self._project_title = project_title
         self._on_media_selected = on_media_selected
 
         self._tiles: list[QWidget] = []
@@ -73,15 +73,20 @@ class SegmentViewGridController:
 
         self.search_input: QLineEdit | None = None
         self.search_button = None
-        self.search_status: QLabel | None = None
-        self._media_preview: QLabel | None = None
+        self.search_status = None
+        self._media_preview = None
         self._selected_url: str | None = None
         self._thumb_by_url: dict[str, bytes] = {}
-        self._preview_temp_cache = SegmentPreviewTempCache(project_title)
+        self._preview_cache = preview_cache
+
+    @staticmethod
+    def _dispose_widget_preview(widget: QWidget) -> None:
+        dispose = getattr(widget, "dispose", None)
+        if callable(dispose):
+            dispose()
 
     def set_segment(self, segment: Segment) -> None:
         """Switch active segment and rebuild visible tiles for that segment."""
-        self._preview_temp_cache.activate_segment(segment.id)
         self._segment = segment
         self._reset_tiles()
         self.rebuild_grid()
@@ -111,6 +116,7 @@ class SegmentViewGridController:
         """Recreate base tiles and restore cached result tiles for active segment."""
         for w in self._tiles:
             try:
+                self._dispose_widget_preview(w)
                 w.hide()
                 self._grid.removeWidget(w)
                 # destroy this object safely at the next event-loop turn
@@ -122,11 +128,14 @@ class SegmentViewGridController:
         self._result_tiles = []
         self.search_input = None
         self.search_status = None
+        # Release backend-held media handles before removing temp cache files.
+        SharedVideoPreviewBackend.instance().release_source()
 
         base = build_base_tiles(
             parent=self._grid_host,
             tile_size_px=self._tile_size_px,
             segment=self._segment,
+            preview_cache=self._preview_cache,
             on_search_clicked=self._on_search_clicked,
         )
         self._tiles.extend(base.tiles)
@@ -167,12 +176,11 @@ class SegmentViewGridController:
         self.search_status.setText(status)
 
     def _build_result_tile(self, *, media_type: str, url: str, thumb: bytes) -> QWidget:
-        seg_id = self._segment.id
         if media_type == VIDEO_MEDIA:
             tile = VideoTile(
                 size_px=self._tile_size_px,
                 media_url=url,
-                cache_path=self._preview_temp_cache.path_for_url(url, seg_id, fallback_ext=".mp4"),
+                preview_cache=self._preview_cache,
                 parent=self._grid_host,
             )
             tile.set_thumbnail_bytes(thumb)
@@ -195,7 +203,7 @@ class SegmentViewGridController:
             tile = GifTile(
                 size_px=self._tile_size_px,
                 media_url=url,
-                cache_path=self._preview_temp_cache.path_for_url(url, seg_id, fallback_ext=".gif"),
+                preview_cache=self._preview_cache,
                 parent=self._grid_host,
             )
             tile.set_thumbnail_bytes(thumb)
@@ -211,6 +219,7 @@ class SegmentViewGridController:
         """Remove dynamic result tiles while keeping the 4 base tiles."""
         for w in self._result_tiles:
             try:
+                self._dispose_widget_preview(w)
                 w.hide()
                 self._grid.removeWidget(w)
                 w.deleteLater()
@@ -220,6 +229,11 @@ class SegmentViewGridController:
         self._tiles = self._tiles[:4]
         self._selected_url = None
         self._sync_media_preview()
+
+    def release_preview_resources(self) -> None:
+        for w in self._tiles:
+            self._dispose_widget_preview(w)
+        SharedVideoPreviewBackend.instance().release_source()
 
     def _on_search_clicked(self) -> None:
         if self.search_input is None:
@@ -317,11 +331,11 @@ class SegmentViewGridController:
         self._sync_media_preview(thumb_bytes=thumb_bytes)
 
     def _sync_media_preview(self, *, thumb_bytes: bytes | None = None) -> None:
-        refresh_media_preview(
+        refresh_segment_media_tile(
             segment=self._segment,
-            media_preview_label=self._media_preview,
+            media_preview=self._media_preview,
+            preview_cache=self._preview_cache,
             tile_size_px=self._tile_size_px,
-            project_title=self._project_title,
             thumb_by_url=self._thumb_by_url,
             thumb_bytes=thumb_bytes,
         )

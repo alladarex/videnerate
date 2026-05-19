@@ -14,6 +14,8 @@ from ui.styles.qss import (
     SMALL_MUTED_LABEL,
 )
 from ui.widgets.search_settings import build_search_settings_menu
+from ui.widgets.hover_media_preview import HoverMediaPreview
+from ui.cache.segment_preview_cache import SegmentPreviewCache
 from ui.widgets.tile_frame import TileFrame
 
 
@@ -22,7 +24,7 @@ class SegmentBaseTiles:
     """Container for built base tiles and key child widgets used by controller code."""
 
     tiles: list[QWidget]
-    media_preview: QLabel
+    media_preview: HoverMediaPreview
     search_input: QLineEdit
     search_button: QPushButton
     search_status: QLabel
@@ -32,12 +34,13 @@ def build_base_tiles(
     *,
     parent: QWidget,
     tile_size_px: int,
-    segment: Segment | None,
+    segment: Segment,
+    preview_cache: SegmentPreviewCache,
     on_search_clicked,
 ) -> SegmentBaseTiles:
     tiles: list[QWidget] = []
 
-    # (1) Current attached media / placeholder
+    # (1) Current attached media tile
     media_tile = TileFrame(size_px=tile_size_px, parent=parent)
     media_root = QVBoxLayout(media_tile)
     media_root.setContentsMargins(12, 12, 12, 12)
@@ -47,14 +50,17 @@ def build_base_tiles(
     media_title.setStyleSheet(SECTION_TITLE_LABEL)
     media_root.addWidget(media_title, 0)
 
-    media_body = QLabel(media_tile)
-    media_body.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    media_body.setWordWrap(True)
-    media_body.setStyleSheet(MUTED_LABEL)
-    if segment is None or segment.media is None:
-        media_body.setText("No media selected")
+    media_body = HoverMediaPreview(
+        tile_size_px=tile_size_px,
+        reserved=48,
+        placeholder_text="No media selected",
+        cache=preview_cache,
+        parent=media_tile,
+    )
+    if segment.media is None:
+        media_body.set_placeholder_text("No media selected")
     else:
-        media_body.setText("Media attached")
+        media_body.set_placeholder_text("Media attached")
     media_root.addWidget(media_body, 1)
 
     # (2) Upload media tile

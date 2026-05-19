@@ -25,7 +25,8 @@ from ui.styles.qss import (
     TRANSPARENT_SCROLL,
     top_bar_style,
 )
-from ui.widgets.segment_view_cache import SegmentSearchCache
+from ui.cache.segment_preview_cache import SegmentPreviewCache
+from ui.cache.segment_search_cache import SegmentSearchCache
 from ui.widgets.segment_view_grid import SegmentViewGridController
 
 
@@ -47,6 +48,7 @@ class SegmentView(QWidget):
         project: Project,
         tile_size_px: int,
         grid_spacing: int,
+        preview_cache: SegmentPreviewCache,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -67,7 +69,7 @@ class SegmentView(QWidget):
         self._dot_buttons: list[QPushButton] = []
 
         # Needed if segment view is accessible without a prior mouse click in project view
-        # self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self._text_label = QLabel(self)
         self._text_label.setWordWrap(True)
@@ -126,7 +128,7 @@ class SegmentView(QWidget):
             tile_size_px=self._tile_size_px,
             grid_spacing=self._grid_spacing,
             cache=self._cache,
-            project_title=self._project.title,
+            preview_cache=preview_cache,
             on_media_selected=lambda seg_id, b: self.media_selected.emit(seg_id, b),
         )
         self._grid_controller.set_segment(self._current_segment())
@@ -232,14 +234,16 @@ class SegmentView(QWidget):
         super().resizeEvent(event)
         self._grid_controller.rebuild_grid()
 
+    def release_preview_resources(self) -> None:
+        """Release transient preview resources for segment view."""
+        self._grid_controller.release_preview_resources()
+
     def _go_prev(self) -> None:
-        """Navigate to previous segment when available."""
         if self._current_index <= 0:
             return
         self._go_to_index(self._current_index - 1)
 
     def _go_next(self) -> None:
-        """Navigate to next segment when available."""
         n = len(self._project.segments)
         if n == 0 or self._current_index >= n - 1:
             return

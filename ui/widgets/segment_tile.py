@@ -1,36 +1,17 @@
-from pathlib import Path
-
 from PySide6.QtCore import QEvent, QObject, Qt, Signal
-from PySide6.QtGui import QMouseEvent, QPixmap
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from core.models.segment import Segment
 from ui.styles.qss import HIDE_SCROLLBARS, SEGMENT_TILE_EXTRA, TILE_FRAME
+from ui.widgets.hover_media_preview import HoverMediaPreview
+from ui.cache.segment_preview_cache import SegmentPreviewCache
 from ui.widgets.tile_frame import TileFrame
-from ui.widgets.segment_view_media_preview import load_persisted_media_pixmap
-from ui.widgets.tile_pixmap import (
-    inner_preview_edge,
-    load_scaled_pixmap,
+from ui.utils.project_media_paths import load_media_file_thumbnail
+from ui.utils.tile_pixmap import (
     load_scaled_pixmap_from_path,
 )
-
-
-def _default_plus_icon_path() -> Path:
-    # ui/widgets/segment_tile.py -> ui/
-    return Path(__file__).resolve().parents[1] / "assets" / "icons" / "plus.png"
-
-
-def column_count_for_viewport(
-    viewport_width: int,
-    *,
-    tile_size_px: int,
-    grid_spacing: int,
-    max_cols: int = 4,
-) -> int:
-    """How many segment tiles fit in a scroll area viewport (shared by project + segment views)."""
-    cell = tile_size_px + grid_spacing
-    cols = max(1, (max(1, viewport_width) + grid_spacing) // max(1, cell))
-    return min(max_cols, cols)
+from ui.utils.ui_paths import icon_path
 
 
 class SegmentTile(TileFrame):
@@ -42,14 +23,14 @@ class SegmentTile(TileFrame):
         segment: Segment,
         *,
         size_px: int = 180,
-        project_title: str,
+        preview_cache: SegmentPreviewCache,
         parent: QWidget | None = None,
     ) -> None:
         self._segment = segment
-        self._size_px = int(size_px)
-        self._project_title = project_title
+        self._size_px = size_px
         self._thumb_bytes: bytes | None = None
-        self._media_label: QLabel | None = None
+        self._media_preview: HoverMediaPreview
+        self._preview_cache = preview_cache
 
         super().__init__(
             size_px=self._size_px,
@@ -80,14 +61,20 @@ class SegmentTile(TileFrame):
         header_scroll.setWidget(header_label)
         root.addWidget(header_scroll)
 
-        self._media_label = QLabel(self)
-        self._media_label.setObjectName("SegmentTileMediaPlaceholder")
-        self._media_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._media_label.setMinimumHeight(1)
-        root.addWidget(self._media_label, 1)
+        self._media_preview = HoverMediaPreview(
+            tile_size_px=self._size_px,
+            reserved=40,
+            placeholder_text="Media",
+            cache=self._preview_cache,
+            parent=self,
+        )
+        self._media_preview.setObjectName("SegmentTileMediaPlaceholder")
+        self._media_preview.setMinimumHeight(1)
+        self._media_preview.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        root.addWidget(self._media_preview, 1)
         self.refresh_media()
 
-        for w in (header_scroll, header_label, self._media_label):
+        for w in (header_scroll, header_label, self._media_preview):
             w.installEventFilter(self)
 
     # Handle clicks on child elements (header, invisible scroll, media placeholder)
@@ -103,6 +90,17 @@ class SegmentTile(TileFrame):
             self.clicked.emit()
         super().mousePressEvent(event)
 
+    def enterEvent(self, event) -> None:
+        super().enterEvent(event)
+        self._media_preview.on_hover_enter()
+
+    def leaveEvent(self, event) -> None:
+        super().leaveEvent(event)
+        self._media_preview.on_hover_leave()
+
+    def dispose(self) -> None:
+        self._media_preview.dispose()
+
     def set_thumbnail_bytes(self, data: bytes | None) -> None:
         self._thumb_bytes = data
         self.refresh_media()
@@ -112,51 +110,47 @@ class SegmentTile(TileFrame):
 
         Priority (first match wins):
         1. Empty state icon - segment has no media assigned yet.
-        2. Saved file on disk - media persisted to project.json (`file_path`).
-        3. Fresh preview bytes - set from runtime selection (`self._thumb_bytes`).
+        2. Saved file on disk - media persisted to project.json (file_path).
+        3. Fresh preview bytes - set from runtime selection (self._thumb_bytes).
         4. Fallback label - media exists but no drawable preview is available.
         """
 
         media = self._segment.media
 
-        # 1) Empty state (plus) icon when nothing is selected yet
+        # 1) Empty state icon - segment has no media assigned yet
         if media is None:
-            icon_path = _default_plus_icon_path()
+            plus_path = icon_path("plus.png")
             icon_edge = max(1, int(self._size_px * 0.35))
-            pixmap = load_scaled_pixmap_from_path(icon_path, icon_edge)
-            if pixmap is not None:
-                self._media_label.setPixmap(pixmap)
-                self._media_label.setText("")
-            else:
-                self._media_label.setText("+")
+            pixmap = load_scaled_pixmap_from_path(plus_path, icon_edge)
+            self._media_preview.clear_media()
+            self._media_preview.set_thumbnail_pixmap(pixmap)
+            if pixmap is None:
+                self._media_preview.set_placeholder_text("+")
             return
 
-        # Preview area is roughly the tile minus padding, keep scaling stable
-        target = inner_preview_edge(self._size_px, reserved=40)
-
-        # 2) Persisted media (project folder / relative path in project.json)
+        # 2) Saved file on disk - media persisted in project.json (file_path)
         if getattr(media, "file_path", None):
-            pixmap = load_persisted_media_pixmap(
+            pixmap = load_media_file_thumbnail(
                 media=media,
                 tile_size_px=self._size_px,
                 reserved=40,
-                project_title=self._project_title,
+                preview_cache=self._preview_cache,
             )
             if pixmap is not None:
-                self._media_label.setPixmap(pixmap)
-                self._media_label.setText("")
+                self._media_preview.bind_from_media(media=media)
+                self._media_preview.set_thumbnail_pixmap(pixmap)
                 return
 
-        # 3) In-memory preview bytes (e.g. right after clicking a result tile)
+        # 3) Fresh preview bytes - set from runtime selection (self._thumb_bytes)
         if self._thumb_bytes:
-            pixmap = load_scaled_pixmap(self._thumb_bytes, target)
-            if pixmap is not None:
-                self._media_label.setPixmap(pixmap)
-                self._media_label.setText("")
-                return
+            self._media_preview.bind_from_media(
+                media=media,
+                thumbnail_bytes=self._thumb_bytes,
+            )
+            return
 
-        # 4) Nothing drawable yet, show a fallback label
-        self._media_label.setPixmap(QPixmap())
-        self._media_label.setText("Media")
+        # 4) Fallback label - media exists but no drawable preview is available
+        self._media_preview.bind_from_media(media=media)
+        self._media_preview.set_placeholder_text("Media")
 
 

@@ -26,6 +26,11 @@ class Media(ABC):
     def to_dict(self) -> dict[str, Any]:
         pass
 
+    @property
+    @abstractmethod
+    def media_type(self) -> str:
+        pass
+
     @abstractmethod
     def render_media() -> None:
         pass
@@ -40,6 +45,10 @@ class ImageMedia(Media):
             "file_path": self.file_path,
             "url": self.url,
         }
+
+    @property
+    def media_type(self) -> str:
+        return IMAGE_MEDIA
 
     def render_media(self) -> None:
         pass
@@ -58,6 +67,10 @@ class VideoMedia(Media):
             "start_timestamp": self.start_timestamp,
         }
 
+    @property
+    def media_type(self) -> str:
+        return VIDEO_MEDIA
+
     def render_media(self) -> None:
         pass
 
@@ -72,6 +85,10 @@ class GifMedia(Media):
             "file_path": self.file_path,
             "url": self.url,
         }
+
+    @property
+    def media_type(self) -> str:
+        return GIF_MEDIA
 
     def render_media(self) -> None:
         pass

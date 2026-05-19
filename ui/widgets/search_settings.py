@@ -17,7 +17,7 @@ class SearchSettingsState:
     """Persisted across segment switches and segment view rebuilds."""
 
     google: bool = True
-    giphy: bool = True
+    giphy: bool = False
     pexels_video: bool = True
     pexels_image: bool = True
     pixabay_video: bool = True

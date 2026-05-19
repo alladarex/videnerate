@@ -22,7 +22,9 @@ from core.models.project import Project
 from core.models.segment import Segment
 from services.project_service import save_project
 from ui.styles.qss import ACTION_BUTTON, TITLE_LABEL, top_bar_style
-from ui.widgets.segment_tile import SegmentTile, column_count_for_viewport
+from ui.cache.segment_preview_cache import SegmentPreviewCache
+from ui.utils.grid_layout import column_count_for_viewport
+from ui.widgets.segment_tile import SegmentTile
 from ui.widgets.segment_view import SegmentView
 
 _PROJECT_VIEW_BAR_HEIGHT_PX = 56
@@ -44,13 +46,14 @@ class ProjectWindow(QMainWindow):
         self._voiceover_btn: QPushButton | None = None
         self._stack: QStackedWidget | None = None
         self._project_view: QWidget | None = None
-        self._segment_detail_view: SegmentView | None = None
+        self._segment_view: SegmentView | None = None
 
         self._segments_scroll: QScrollArea | None = None
         # QGridLayout must be attached to a QWidget. It cannot attach directly to QScrollArea
         self._segments_grid_host: QWidget | None = None
         self._segments_grid: QGridLayout | None = None
         self._segment_tiles: list[SegmentTile] = []
+        self._preview_cache = SegmentPreviewCache(self._project.title)
         # Store a map of segment id to tile for quick lookup
         self._segment_tile_by_id: dict[int, SegmentTile] = {}
         self._tile_size_px = 240
@@ -95,6 +98,8 @@ class ProjectWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self._media_player.stop()
+        self._segment_view.release_preview_resources()
+        self._preview_cache.clear()
         super().closeEvent(event)
 
     def _build_ui(self) -> None:
@@ -171,7 +176,7 @@ class ProjectWindow(QMainWindow):
             SegmentTile(
                 seg,
                 size_px=self._tile_size_px,
-                project_title=self._project.title,
+                preview_cache=self._preview_cache,
                 parent=self._segments_grid_host,
             )
             for seg in self._project.segments
@@ -187,15 +192,16 @@ class ProjectWindow(QMainWindow):
 
         self._stack.addWidget(self._project_view)
 
-        self._segment_detail_view = SegmentView(
+        self._segment_view = SegmentView(
             project=self._project,
             tile_size_px=self._tile_size_px,
             grid_spacing=self._grid_spacing,
+            preview_cache=self._preview_cache,
             parent=self._stack,
         )
-        self._segment_detail_view.close_requested.connect(self._show_project_view)
-        self._segment_detail_view.media_selected.connect(self._on_media_selected)
-        self._stack.addWidget(self._segment_detail_view)
+        self._segment_view.close_requested.connect(self._show_project_view)
+        self._segment_view.media_selected.connect(self._on_media_selected)
+        self._stack.addWidget(self._segment_view)
 
         self._stack.setCurrentIndex(0)
 
@@ -231,16 +237,14 @@ class ProjectWindow(QMainWindow):
             tile.clicked.connect(lambda s=seg: self._open_segment_view(s))
 
     def _open_segment_view(self, segment: Segment) -> None:
-        """Show segment detail view focused on selected segment."""
-        if self._segment_detail_view is None or self._stack is None:
-            return
-        self._segment_detail_view.set_segment(segment)
+        self._segment_view.set_segment(segment)
         self._stack.setCurrentIndex(1)
 
     def _show_project_view(self) -> None:
         """Return to project grid (tile previews update on media selection, not here)."""
-        if self._stack is not None:
-            self._stack.setCurrentIndex(0)
+        self._segment_view.release_preview_resources()
+        self._preview_cache.clear()
+        self._stack.setCurrentIndex(0)
 
     def _on_media_selected(self, segment_id: int, thumb_bytes: bytes) -> None:
         """Update matching project tile thumbnail after media selection in detail view."""

@@ -11,6 +11,7 @@ class SegmentSearchResult:
 @dataclass
 class SegmentSearchState:
     """Cached search query and fetched thumbnail data for one segment."""
+
     query: str
     results: list[SegmentSearchResult]
 
@@ -31,4 +32,3 @@ class SegmentSearchCache:
             query=query,
             results=list(results),
         )
-
