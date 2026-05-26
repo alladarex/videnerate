@@ -3,6 +3,7 @@ import urllib.parse
 import urllib.request
 
 from config import PIXABAY_API_KEY
+from headers import VIDENERATE_HEADERS
 
 _LOG_TAG = "pixabay"
 _VIDEO_MIN_SHORT_EDGE = 720
@@ -10,16 +11,12 @@ _VIDEO_MAX_SHORT_EDGE = 1080
 _VIDEO_QUALITIES = ("large", "medium", "small", "tiny")
 
 
-def _headers() -> dict[str, str]:
-    return {"User-Agent": "Videnerate"}
-
-
 def _is_valid_http_url(value: object) -> bool:
     return isinstance(value, str) and value.startswith("http")
 
 
 def _fetch_json(url: str, *, timeout_s: float) -> dict:
-    req = urllib.request.Request(url, headers=_headers())
+    req = urllib.request.Request(url, headers=VIDENERATE_HEADERS)
     with urllib.request.urlopen(req, timeout=timeout_s) as resp:
         payload = resp.read().decode("utf-8", errors="ignore")
     return json.loads(payload)
@@ -27,7 +24,7 @@ def _fetch_json(url: str, *, timeout_s: float) -> dict:
 
 def _fetch_bytes(url: str, *, timeout_s: float) -> bytes | None:
     try:
-        req = urllib.request.Request(url, headers=_headers())
+        req = urllib.request.Request(url, headers=VIDENERATE_HEADERS)
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
             data = resp.read()
         return data or None

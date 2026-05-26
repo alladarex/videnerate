@@ -59,7 +59,7 @@ def segment_narration(
         merge_last=False,
         model=None,
         selected_model: str = "deepseek-reasoner",
-        max_tokens=4000,
+        max_tokens=5000,
         temperature=0.6
         ):
     """Splits narration into coherent segments."""
@@ -95,11 +95,14 @@ def get_segments(narration: str, selected_model: str = "deepseek-reasoner") -> l
         return []
 
     raw_segments = segment_narration(narration, selected_model=selected_model)
-    print(raw_segments)
-    # if not raw_segments:
-    #     print("------No segments returned------ trying again")
-    #     get_segments(narration)
-    segments = [line.strip() for line in raw_segments.splitlines() if line.strip()]
+    from core.word_tokenize import assert_segment_words_match_narration
+
+    segments = [
+        line.strip()
+        for line in raw_segments.splitlines()
+        if line.strip()
+    ]
+    assert_segment_words_match_narration(narration, segments)
     return segments
 
 
@@ -125,5 +128,3 @@ def generate_segment_search_plan(
         max_tokens=max_tokens,
     )
     return response.choices[0].message.content.strip()
-
-

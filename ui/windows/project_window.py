@@ -1,8 +1,5 @@
-from pathlib import Path
-
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
-from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -17,32 +14,28 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from config import PROJECTS_DIR
-from core.models.project import Project
 from core.models.segment import Segment
+from core.models.word_timeline import WordTimeline, segment_playback_bounds
+from core.models.project import Project
+from core.project_paths import ProjectPaths
+from services.alignment_service import load_word_timeline
 from services.project_service import save_project
 from ui.styles.qss import ACTION_BUTTON, TITLE_LABEL, top_bar_style
 from ui.cache.segment_preview_cache import SegmentPreviewCache
 from ui.utils.grid_layout import column_count_for_viewport
 from ui.widgets.segment_tile import SegmentTile
 from ui.widgets.segment_view import SegmentView
+from ui.widgets.voiceover_playback import VoiceoverPlaybackController
 
 _PROJECT_VIEW_BAR_HEIGHT_PX = 56
-
-
-def _resolved_voiceover_path(project: Project) -> Path | None:
-    """Resolve stored voiceover path for playback if file exists."""
-    if not project.voiceover_path:
-        return None
-    path = (PROJECTS_DIR / project.title / project.voiceover_path).resolve()
-    return path if path.is_file() else None
 
 
 class ProjectWindow(QMainWindow):
     def __init__(self, project: Project) -> None:
         super().__init__()
         self._project = project
-        self._voiceover_file = _resolved_voiceover_path(project)
+        self._paths = ProjectPaths.from_title(project.title)
+        self._word_timeline: WordTimeline = load_word_timeline(self._paths)
         self._voiceover_btn: QPushButton | None = None
         self._stack: QStackedWidget | None = None
         self._project_view: QWidget | None = None
@@ -53,51 +46,52 @@ class ProjectWindow(QMainWindow):
         self._segments_grid_host: QWidget | None = None
         self._segments_grid: QGridLayout | None = None
         self._segment_tiles: list[SegmentTile] = []
-        self._preview_cache = SegmentPreviewCache(self._project.title)
+        self._preview_cache = SegmentPreviewCache(self._paths)
         # Store a map of segment id to tile for quick lookup
         self._segment_tile_by_id: dict[int, SegmentTile] = {}
         self._tile_size_px = 240
         self._grid_spacing = 12
-        self.setWindowTitle(f"Videnerate - {project.title}")
+        self.setWindowTitle(f"Videnerate - {self._project.title}")
 
-        self._media_player = QMediaPlayer(self)
-        self._audio_output = QAudioOutput(self)
-        self._media_player.setAudioOutput(self._audio_output)
-        self._media_player.playbackStateChanged.connect(self._sync_voiceover_button)
+        self._voiceover = VoiceoverPlaybackController(self, self._paths)
+        self._voiceover.state_changed.connect(self._sync_playback_buttons)
 
         self._build_ui()
-        self._sync_voiceover_button()
+        self._sync_playback_buttons()
 
         save_shortcut = QShortcut(QKeySequence.StandardKey.Save, self)
         save_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
         save_shortcut.activated.connect(self._save_project)
 
-    def _sync_voiceover_button(self) -> None:
-        """Keep voiceover button label in sync with playback state."""
-        if self._voiceover_btn is None:
-            return
-        if self._media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-            self._voiceover_btn.setText("Stop playback")
-        else:
-            self._voiceover_btn.setText("Play voiceover")
+    def _sync_playback_buttons(self) -> None:
+        """Keep project and segment play buttons in sync with playback state."""
+        if self._voiceover_btn is not None:
+            self._voiceover_btn.setText(self._voiceover.full_play_button_text())
+        if self._segment_view is not None:
+            seg = self._segment_view.current_segment
+            self._segment_view.sync_playback_button(
+                playing=self._voiceover.is_playing_segment(seg.id),
+                bounds=self._segment_playback_bounds(seg),
+            )
+
+    def _segment_playback_bounds(self, segment: Segment) -> tuple[float, float]:
+        return segment_playback_bounds(self._word_timeline, segment)
 
     def _save_project(self) -> None:
         save_project(self._project)
 
     def _toggle_voiceover(self) -> None:
-        """Start/stop voiceover playback for the current project."""
-        if self._voiceover_file is None:
+        self._voiceover.toggle_full()
+
+    def _toggle_segment_voiceover(self) -> None:
+        if self._segment_view is None:
             return
-        if self._media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-            self._media_player.stop()
-            return
-        if self._media_player.source().isEmpty():
-            self._media_player.setSource(QUrl.fromLocalFile(str(self._voiceover_file)))
-        self._media_player.setPosition(0)
-        self._media_player.play()
+        seg = self._segment_view.current_segment
+        start, end = self._segment_playback_bounds(seg)
+        self._voiceover.toggle_segment(seg.id, start, end)
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        self._media_player.stop()
+        self._voiceover.stop()
         self._segment_view.release_preview_resources()
         self._preview_cache.clear()
         super().closeEvent(event)
@@ -131,11 +125,7 @@ class ProjectWindow(QMainWindow):
         self._voiceover_btn.setFixedHeight(36)
         self._voiceover_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._voiceover_btn.setStyleSheet(ACTION_BUTTON)
-        self._voiceover_btn.setEnabled(self._voiceover_file is not None)
-        if self._voiceover_file is None:
-            self._voiceover_btn.setToolTip("No voiceover file for this project.")
-        else:
-            self._voiceover_btn.setToolTip(str(self._voiceover_file))
+        self._voiceover_btn.setToolTip(self._voiceover.voiceover_tooltip())
         self._voiceover_btn.clicked.connect(self._toggle_voiceover)
 
         top_row = QFrame(self._project_view)
@@ -201,6 +191,8 @@ class ProjectWindow(QMainWindow):
         )
         self._segment_view.close_requested.connect(self._show_project_view)
         self._segment_view.media_selected.connect(self._on_media_selected)
+        self._segment_view.segment_play_clicked.connect(self._toggle_segment_voiceover)
+        self._segment_view.current_segment_changed.connect(self._on_segment_view_changed)
         self._stack.addWidget(self._segment_view)
 
         self._stack.setCurrentIndex(0)
@@ -239,9 +231,19 @@ class ProjectWindow(QMainWindow):
     def _open_segment_view(self, segment: Segment) -> None:
         self._segment_view.set_segment(segment)
         self._stack.setCurrentIndex(1)
+        self._sync_playback_buttons()
+
+    def _on_segment_view_changed(self) -> None:
+        if self._segment_view is None:
+            return
+        self._voiceover.on_active_segment_changed(
+            self._segment_view.current_segment.id
+        )
+        self._sync_playback_buttons()
 
     def _show_project_view(self) -> None:
         """Return to project grid (tile previews update on media selection, not here)."""
+        self._voiceover.stop()
         self._segment_view.release_preview_resources()
         self._preview_cache.clear()
         self._stack.setCurrentIndex(0)
@@ -251,5 +253,3 @@ class ProjectWindow(QMainWindow):
         tile = self._segment_tile_by_id.get(segment_id)
         if tile is not None:
             tile.set_thumbnail_bytes(thumb_bytes)
-
-

@@ -6,6 +6,8 @@ import urllib.parse
 import urllib.request
 from typing import Optional
 
+from headers import BROWSER_HEADERS, ddg_api_headers
+
 
 def _ddg_vqd_from_html(html: str) -> Optional[str]:
     """Extract DuckDuckGo vqd token required for image API requests."""
@@ -26,15 +28,8 @@ def _fetch_ddg_thumb_results(
     if not q:
         return []
 
-    base_headers = {
-        # servers often treat bare/short agents as bots and may tile or degrade responses
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36",
-        # prefer US English, but generic English is also fine
-        "Accept-Language": "en-US,en;q=0.9",
-    }
-
     init_url = "https://duckduckgo.com/?" + urllib.parse.urlencode({"q": q, "ia": "images"})
-    init_req = urllib.request.Request(init_url, headers=base_headers)
+    init_req = urllib.request.Request(init_url, headers=BROWSER_HEADERS)
     with urllib.request.urlopen(init_req, timeout=timeout_s) as resp:
         init_html = resp.read().decode("utf-8", errors="ignore")
 
@@ -52,12 +47,7 @@ def _fetch_ddg_thumb_results(
         }
     )
     api_req = urllib.request.Request(
-        api_url,
-        headers={
-            **base_headers,
-            "Accept": "application/json,text/javascript,*/*;q=0.1",
-            "Referer": init_url,
-        },
+        api_url, headers=ddg_api_headers(init_url)
     )
 
     with urllib.request.urlopen(api_req, timeout=timeout_s) as resp:
@@ -83,7 +73,7 @@ def _fetch_ddg_thumb_results(
     images: list[tuple[str, bytes]] = []
     for full_url, thumb_url in items[:limit]:
         try:
-            img_req = urllib.request.Request(thumb_url, headers=base_headers)
+            img_req = urllib.request.Request(thumb_url, headers=BROWSER_HEADERS)
             with urllib.request.urlopen(img_req, timeout=timeout_s) as img_resp:
                 b = img_resp.read()
             if b:

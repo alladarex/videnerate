@@ -187,12 +187,12 @@ class NarrationEditorView(QWidget):
         loading_row = QWidget(self)
         loading_row_layout = QHBoxLayout(loading_row)
         loading_row_layout.setContentsMargins(0, 0, 0, 0)
-        loading_label = QLabel("Creating project...")
+        self._loading_label = QLabel("Creating project...")
         loading_spinner = QProgressBar()
         loading_spinner.setRange(0, 0)
         loading_spinner.setTextVisible(False)
         loading_spinner.setFixedWidth(160)
-        loading_row_layout.addWidget(loading_label)
+        loading_row_layout.addWidget(self._loading_label)
         loading_row_layout.addWidget(loading_spinner)
         loading_row_layout.addStretch()
 
@@ -208,6 +208,9 @@ class NarrationEditorView(QWidget):
         self.create_project_button.setEnabled(not is_loading)
         self.project_title_input.setReadOnly(is_loading)
         self.model_selector.setEnabled(not is_loading)
+
+    def set_loading_status(self, message: str) -> None:
+        self._loading_label.setText(message)
 
     def set_project_title(self, title: str) -> None:
         self.project_title_input.setText(title)

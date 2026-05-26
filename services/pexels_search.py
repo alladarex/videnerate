@@ -3,19 +3,11 @@ import urllib.parse
 import urllib.request
 
 from config import PEXELS_API_KEY
+from headers import pexels_headers
 
 _LOG_TAG = "pexels"
 _VIDEO_MIN_SHORT_EDGE = 720
 _VIDEO_MAX_SHORT_EDGE = 1080
-
-
-def _headers() -> dict[str, str]:
-    if not PEXELS_API_KEY:
-        return {}
-    return {
-        "Authorization": PEXELS_API_KEY,
-        "User-Agent": "Videnerate",
-    }
 
 
 def _is_valid_http_url(value: object) -> bool:
@@ -23,7 +15,7 @@ def _is_valid_http_url(value: object) -> bool:
 
 
 def _fetch_json(url: str, *, timeout_s: float) -> dict:
-    req = urllib.request.Request(url, headers=_headers())
+    req = urllib.request.Request(url, headers=pexels_headers())
     with urllib.request.urlopen(req, timeout=timeout_s) as resp:
         payload = resp.read().decode("utf-8", errors="ignore")
     return json.loads(payload)
@@ -31,7 +23,7 @@ def _fetch_json(url: str, *, timeout_s: float) -> dict:
 
 def _fetch_bytes(url: str, *, timeout_s: float) -> bytes | None:
     try:
-        req = urllib.request.Request(url, headers=_headers())
+        req = urllib.request.Request(url, headers=pexels_headers())
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
             data = resp.read()
         return data or None

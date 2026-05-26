@@ -10,12 +10,16 @@ class Segment:
         self.id = id
         self.text = text
         self.media: Media | None = None
+        self.word_start: int | None = None
+        self.word_end: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "text": self.text,
             "media": self.media.to_dict() if self.media is not None else None,
+            "word_start": self.word_start,
+            "word_end": self.word_end,
         }
 
     @classmethod
@@ -24,6 +28,8 @@ class Segment:
         raw = data.get("media")
         if raw is not None:
             seg.set_media(media_from_dict(raw))
+        seg.word_start = int(data["word_start"])
+        seg.word_end = int(data["word_end"])
         return seg
 
     def set_media(self, media: Media) -> None:

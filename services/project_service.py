@@ -4,19 +4,18 @@ import hashlib
 import shutil
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 
 from core.models.project import Project
 from core.models.media import GifMedia, ImageMedia, Media, VideoMedia
-from core.media_processor import MEDIA_SUBDIR
-from core.scripter import generate_segment_search_plan
-from core.voiceover import AUDIO_SUBDIR, voiceover_relative_path
 from config import PROJECTS_DIR
+from headers import BROWSER_HEADERS
+from core.project_paths import ProjectPaths
+from core.scripter import generate_segment_search_plan
+from core.word_tokenize import assert_segment_words_match_narration, normalize_text
+from services.alignment_service import align_project_audio
 from services.voiceover_service import write_project_voiceover
-
-PROJECT_JSON_FILENAME = "project.json"
-NARRATION_FILENAME = "narration.txt"
-SEGMENTS_ANALYZED_FILENAME = "segments-analyzed.json"
 
 INVALID_FOLDER_CHARS = set('<>:"/\\|?*')
 
@@ -36,57 +35,61 @@ def validate_project_title_for_storage(title: str) -> str:
     return normalized
 
 
-def list_project_titles(projects_dir: Path | None = None) -> list[str]:
-    projects_dir = PROJECTS_DIR if projects_dir is None else projects_dir
-    if not projects_dir.exists():
+def list_project_titles() -> list[str]:
+    root = PROJECTS_DIR
+    if not root.exists():
         return []
-
-    return sorted([item.name for item in projects_dir.iterdir() if item.is_dir()])
-
-
-def load_project(title: str, projects_dir: Path | None = None) -> Project:
-    """Load a project by title from its JSON file."""
-    projects_dir = PROJECTS_DIR if projects_dir is None else projects_dir
-    project_dir = projects_dir / title
-    json_path = project_dir / PROJECT_JSON_FILENAME
-    if not project_dir.is_dir():
-        raise FileNotFoundError(f"Project folder not found: {project_dir}")
-    if not json_path.is_file():
-        raise FileNotFoundError(f"Project file not found: {json_path}")
-    raw = json_path.read_text(encoding="utf-8")
-    data = json.loads(raw)
-    return Project.from_dict(data)
+    return sorted(item.name for item in root.iterdir() if item.is_dir())
 
 
-def get_next_project_title(projects_dir: Path | None = None) -> str:
+def get_next_project_title() -> str:
     """Return first available Project_x title based on existing project folders."""
-    projects_dir = PROJECTS_DIR if projects_dir is None else projects_dir
+    root = PROJECTS_DIR
     max_index = 0
     pattern = re.compile(r"^Project_(\d+)$")
-
-    if projects_dir.exists():
-        for item in projects_dir.iterdir():
+    if root.exists():
+        for item in root.iterdir():
             if not item.is_dir():
                 continue
             match = pattern.match(item.name)
-            if not match:
-                continue
-            max_index = max(max_index, int(match.group(1)))
-
+            if match:
+                max_index = max(max_index, int(match.group(1)))
     return f"Project_{max_index + 1}"
+
+
+def is_project_title_unique(title: str) -> bool:
+    """Return True when no existing project folder has the same name."""
+    root = PROJECTS_DIR
+    normalized = title.strip().casefold()
+    if not normalized or not root.exists():
+        return True
+    return not any(
+        item.is_dir() and item.name.casefold() == normalized for item in root.iterdir()
+    )
+
+
+def load_project(title: str) -> Project:
+    """Load a project by title from its JSON file."""
+    paths = ProjectPaths.from_title(title)
+    paths.require_existing()
+    raw = paths.project_json.read_text(encoding="utf-8")
+    return Project.from_dict(json.loads(raw))
+
+
+def _rel_path(paths: ProjectPaths, path: Path) -> str:
+    return path.resolve().relative_to(paths.root.resolve()).as_posix()
 
 
 def create_project_from_segments(
     segments: list[str],
     title: str = "Untitled",
-    voiceover_path: str | None = None,
 ) -> Project:
     """Create a new in-memory Project from segment texts (no saving)."""
-    return Project(segments=segments, title=title, voiceover_path=voiceover_path)
+    return Project(segments=segments, title=title)
 
 
 def _write_segments_analyzed_file(
-    project_dir: Path, segments: list[str], selected_model: str
+    paths: ProjectPaths, segments: list[str], selected_model: str
 ) -> None:
     segments_payload = {
         "available_sources": ["google", "pexels", "pixabay", "giphy"],
@@ -99,56 +102,61 @@ def _write_segments_analyzed_file(
         json.dumps(segments_payload, ensure_ascii=False, indent=2),
         selected_model=selected_model,
     )
-    (project_dir / SEGMENTS_ANALYZED_FILENAME).write_text(
+    paths.segments_analyzed_json.write_text(
         analyzed_text,
         encoding="utf-8",
     )
 
+
 def create_and_save_project(
     segments: list[str],
+    narration: str,
     title: str = "Untitled",
-    narration: str | None = None,
     auto_assign: bool = False,
     selected_model: str = "deepseek-reasoner",
+    on_status: Callable[[str], None] | None = None,
 ) -> Project:
     """Create a new project and save it to the filesystem."""
+
+    if not narration:
+        raise ValueError("Narration is required.")
+    if not segments:
+        raise ValueError("Segments are required.")
+
+    def status(message: str) -> None:
+        if on_status is not None:
+            on_status(message)
+
+    status("Setting up project...")
     dir_name = validate_project_title_for_storage(title)
-    project_dir = PROJECTS_DIR / dir_name
-    project_dir.mkdir(parents=True, exist_ok=True)
-    (project_dir / MEDIA_SUBDIR).mkdir(parents=True, exist_ok=True)
+    paths = ProjectPaths.from_title(dir_name)
+    paths.ensure_layout()
 
-    voiceover_rel: str | None = None
-    if narration is not None:
-        (project_dir / NARRATION_FILENAME).write_text(narration, encoding="utf-8")
-        if narration.strip():
-            audio_dir = project_dir / AUDIO_SUBDIR
-            audio_dir.mkdir(parents=True, exist_ok=True)
-            write_project_voiceover(narration, audio_dir)
-            voiceover_rel = voiceover_relative_path()
+    segments = [normalize_text(text.strip()) for text in segments]
 
-    project = create_project_from_segments(segments, title=dir_name, voiceover_path=voiceover_rel)
-    json_path = project_dir / PROJECT_JSON_FILENAME
+    narration = normalize_text(narration.strip())
+    assert_segment_words_match_narration(narration, segments)
+    paths.narration_txt.write_text(narration, encoding="utf-8")
+
+    status("Generating voiceover...")
+    write_project_voiceover(narration, paths)
+    project = create_project_from_segments(segments, title=dir_name)
+
+    status("Aligning audio to narration...")
+    align_project_audio(paths, project)
+
+    status("Saving project...")
     payload = project.to_dict()
-    json_path.write_text(
+    paths.project_json.write_text(
         json.dumps(payload, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
+
     if auto_assign:
+        status("Analyzing segments...")
         segment_texts = [seg.text for seg in project.segments]
-        _write_segments_analyzed_file(project_dir, segment_texts, selected_model)
+        _write_segments_analyzed_file(paths, segment_texts, selected_model)
     return project
-
-def is_project_title_unique(title: str, projects_dir: Path | None = None) -> bool:
-    """Return True when no existing project folder has the same name."""
-    projects_dir = PROJECTS_DIR if projects_dir is None else projects_dir
-    normalized = title.strip().casefold()
-    if not normalized or not projects_dir.exists():
-        return True
-
-    for item in projects_dir.iterdir():
-        if item.is_dir() and item.name.casefold() == normalized:
-            return False
-    return True
 
 
 def _guess_ext_from_url(url: str, *, fallback: str) -> str:
@@ -161,34 +169,25 @@ def _guess_ext_from_url(url: str, *, fallback: str) -> str:
 
 def _download_url_to_path(url: str, dest_path: Path, *, timeout_s: float = 20.0) -> None:
     dest_path.parent.mkdir(parents=True, exist_ok=True)
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36",
-            "Accept-Language": "en-US,en;q=0.9",
-        },
-    )
+    req = urllib.request.Request(url, headers=BROWSER_HEADERS)
     with urllib.request.urlopen(req, timeout=timeout_s) as resp:
         data = resp.read()
     dest_path.write_bytes(data)
 
 
-def _ensure_media_persisted(project_dir: Path, segment_id: int, media: Media) -> Media:
+def _ensure_media_persisted(paths: ProjectPaths, segment_id: int, media: Media) -> Media:
     """Return a Media with a stable file_path under media/ (downloading/copying if needed)."""
-    media_dir = project_dir / MEDIA_SUBDIR
+    media_dir = paths.media_dir
     media_dir.mkdir(parents=True, exist_ok=True)
 
     # If already a file_path, ensure it's inside media/.
     if media.file_path:
-        src = Path(media.file_path)
-        if not src.is_absolute():
-            # treat as project-relative
-            src = (project_dir / src).resolve()
+        src = paths.file(media.file_path)
         if src.is_file():
             try:
                 src.relative_to(media_dir.resolve())
                 # Already in media dir, keep as relative path for portability
-                rel = src.relative_to(project_dir).as_posix()
+                rel = _rel_path(paths, src)
                 if isinstance(media, ImageMedia):
                     return ImageMedia(file_path=rel)
                 if isinstance(media, GifMedia):
@@ -206,7 +205,7 @@ def _ensure_media_persisted(project_dir: Path, segment_id: int, media: Media) ->
             dest = media_dir / name
             if not dest.exists():
                 shutil.copyfile(src, dest)
-            rel = dest.relative_to(project_dir).as_posix()
+            rel = _rel_path(paths, dest)
             if isinstance(media, ImageMedia):
                 return ImageMedia(file_path=rel)
             if isinstance(media, GifMedia):
@@ -225,7 +224,7 @@ def _ensure_media_persisted(project_dir: Path, segment_id: int, media: Media) ->
         dest = media_dir / name
         if not dest.exists():
             _download_url_to_path(url, dest)
-        rel = dest.relative_to(project_dir).as_posix()
+        rel = _rel_path(paths, dest)
         if isinstance(media, ImageMedia):
             return ImageMedia(file_path=rel)
         if isinstance(media, GifMedia):
@@ -236,9 +235,9 @@ def _ensure_media_persisted(project_dir: Path, segment_id: int, media: Media) ->
     return media
 
 
-def _cleanup_unused_project_media(project_dir: Path, project: Project) -> None:
+def _cleanup_unused_project_media(paths: ProjectPaths, project: Project) -> None:
     """Delete unreferenced files in `<project>/media/` based on current segment media."""
-    media_dir = project_dir / MEDIA_SUBDIR
+    media_dir = paths.media_dir
     if not media_dir.is_dir():
         return
 
@@ -248,12 +247,7 @@ def _cleanup_unused_project_media(project_dir: Path, project: Project) -> None:
         if media is None or not media.file_path:
             continue
 
-        candidate = Path(media.file_path)
-        resolved = (
-            candidate.resolve()
-            if candidate.is_absolute()
-            else (project_dir / candidate).resolve()
-        )
+        resolved = paths.file(media.file_path)
         try:
             resolved.relative_to(media_dir.resolve())
         except ValueError:
@@ -278,34 +272,33 @@ def _cleanup_unused_project_media(project_dir: Path, project: Project) -> None:
             continue
 
 
-def save_project(project: Project, projects_dir: Path | None = None) -> Path:
+def save_project(project: Project) -> Path:
     """Persist an existing in-memory project to disk.
 
-    - Ensures `<project>/media/` exists.
-    - If a segment has media with a URL, downloads it into `media/` and converts to `file_path`.
-    - Writes `project.json`.
-    - Cleans up unused media files from `<project>/media/`.
-    """
-    projects_dir = PROJECTS_DIR if projects_dir is None else projects_dir
-    dir_name = validate_project_title_for_storage(project.title)
-    project_dir = projects_dir / dir_name
-    project_dir.mkdir(parents=True, exist_ok=True)
-    (project_dir / MEDIA_SUBDIR).mkdir(parents=True, exist_ok=True)
+    - Ensures <project>/media/ exists.
+    - If a segment has media with a URL, downloads it into media/ and converts to file_path.
+    - Writes project.json.
+    - Cleans up unused media files from <project>/media/.
 
-    # Materialize selected media to media/ folder (only for attached media)
+    Returns the absolute path to the project directory.
+    """
+    dir_name = validate_project_title_for_storage(project.title)
+    paths = ProjectPaths.from_title(dir_name)
+    paths.ensure_layout()
+
+    # Save selected media to media/ folder (only for attached media)
     for seg in project.segments:
         if seg.media is None:
             continue
         try:
-            seg.media = _ensure_media_persisted(project_dir, seg.id, seg.media)
+            seg.media = _ensure_media_persisted(paths, seg.id, seg.media)
         except Exception:
             # Don't block saving the rest of the project on a single media failure
             continue
 
-    json_path = project_dir / PROJECT_JSON_FILENAME
-    json_path.write_text(
+    paths.project_json.write_text(
         json.dumps(project.to_dict(), indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
-    _cleanup_unused_project_media(project_dir, project)
-    return json_path
+    _cleanup_unused_project_media(paths, project)
+    return paths.root

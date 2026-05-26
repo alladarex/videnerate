@@ -2,7 +2,6 @@ from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
 from PySide6.QtWidgets import QMainWindow, QMessageBox, QStackedWidget
 
 from core.models.project import Project
-
 from services.narration_service import (
     generate_narration_from_video_idea,
     get_segments_from_narration,
@@ -47,6 +46,7 @@ class NarrationGenerationWorker(QObject):
 class ProjectCreationWorker(QObject):
     finished = Signal(Project)
     failed = Signal(str)
+    status = Signal(str)
 
     def __init__(
         self,
@@ -64,6 +64,7 @@ class ProjectCreationWorker(QObject):
     @Slot()
     def run(self) -> None:
         try:
+            self.status.emit("Segmenting narration...")
             segments = get_segments_from_narration(
                 self._narration, selected_model=self._selected_model
             )
@@ -73,6 +74,7 @@ class ProjectCreationWorker(QObject):
                 narration=self._narration,
                 auto_assign=self._auto_assign,
                 selected_model=self._selected_model,
+                on_status=self.status.emit,
             )
         except Exception as exc:
             self.failed.emit(str(exc))
@@ -284,6 +286,7 @@ class StartWindow(QMainWindow):
         self._project_worker.moveToThread(self._project_thread)
 
         self._project_thread.started.connect(self._project_worker.run)
+        self._project_worker.status.connect(self._narration_view.set_loading_status)
         self._project_worker.finished.connect(self._on_project_created)
         self._project_worker.failed.connect(self._on_project_creation_failed)
         self._project_worker.finished.connect(self._cleanup_project_thread)

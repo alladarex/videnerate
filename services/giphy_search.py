@@ -3,15 +3,11 @@ import urllib.parse
 import urllib.request
 
 from config import GIPHY_API_KEY
+from headers import VIDENERATE_HEADERS
 
 
 def _fetch_json(url: str, *, timeout_s: float) -> dict:
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "Videnerate",
-        },
-    )
+    req = urllib.request.Request(url, headers=VIDENERATE_HEADERS)
     with urllib.request.urlopen(req, timeout=timeout_s) as resp:
         payload = resp.read().decode("utf-8", errors="ignore")
     return json.loads(payload)
@@ -19,12 +15,7 @@ def _fetch_json(url: str, *, timeout_s: float) -> dict:
 
 def _fetch_bytes(url: str, *, timeout_s: float) -> bytes | None:
     try:
-        req = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent": "Videnerate",
-            },
-        )
+        req = urllib.request.Request(url, headers=VIDENERATE_HEADERS)
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
             data = resp.read()
         return data or None

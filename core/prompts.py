@@ -21,9 +21,10 @@ SEGMENTATION_SYSTEM_PROMPT = dedent(
     4. Highlight key ideas or vivid imagery by keeping them intact, even if this requires exceeding the word limit slightly.
     5. Avoid creating choppy or incomplete thoughts. Ensure each segment flows naturally into the next.
     6. Always break at the end of a sentence.
+    7. Do not paraphrase, add, remove, or reorder words.
     Separate segments with newlines
     """
-).strip()
+)
 
 SEGMENT_KEYWORDS_SYSTEM_PROMPT = dedent(
     """
@@ -88,4 +89,4 @@ SEGMENT_KEYWORDS_SYSTEM_PROMPT = dedent(
     ]
     }
     """
-).strip()
+)

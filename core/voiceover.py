@@ -4,14 +4,6 @@ from gtts import gTTS
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
 
-AUDIO_SUBDIR = "audio"
-VOICEOVER_FILENAME = "voiceover.mp3"
-
-
-def voiceover_relative_path() -> str:
-    """Path to the main voiceover file, relative to the project directory."""
-    return f"{AUDIO_SUBDIR}/{VOICEOVER_FILENAME}"
-
 
 def remove_silence_from_audio(
     audio: AudioSegment,

@@ -1,138 +1,165 @@
 {
   "title": "example",
-  "created_at": "2026-04-17T13:43:37.760863",
+  "created_at": "2026-05-19T18:35:34.834403",
   "segments": [
     {
       "id": 0,
-      "text": "An example is a specific case or model",
+      "text": "The word 'example' most commonly refers to a specific instance",
       "media": {
         "type": "image",
-        "file_path": "media/0_70153881bf08ed58.jpg",
+        "file_path": "media/0_a976cd84cb842945.png",
         "url": null
-      }
+      },
+      "word_start": 0,
+      "word_end": 9
     },
     {
       "id": 1,
-      "text": "that shows what something is like or how it works.",
+      "text": "used to illustrate a general idea, rule, or concept.",
       "media": {
-        "type": "image",
-        "file_path": "media/1_f299d1ba31348449.jpeg",
-        "url": null
-      }
+        "type": "video",
+        "file_path": "media/1_c9ba6dea338549ff.mp4",
+        "url": null,
+        "start_timestamp": 0.0
+      },
+      "word_start": 10,
+      "word_end": 18
     },
     {
       "id": 2,
-      "text": "It is a clear illustration",
+      "text": "When people say \"for example,\" they are introducing a concrete case",
       "media": {
         "type": "video",
-        "file_path": "media/2_0e2caa1e564165f8.mp4",
+        "file_path": "media/2_a361f2b9516a1af4.mp4",
         "url": null,
         "start_timestamp": 0.0
-      }
+      },
+      "word_start": 19,
+      "word_end": 29
     },
     {
       "id": 3,
-      "text": "used to explain a rule, an idea, or a general statement.",
+      "text": "that makes an abstract point easier to understand.",
       "media": {
-        "type": "image",
-        "file_path": "media/3_6d5186535d1d171e.jpeg",
-        "url": null
-      }
+        "type": "video",
+        "file_path": "media/3_c8502a63f4f1d025.mp4",
+        "url": null,
+        "start_timestamp": 0.0
+      },
+      "word_start": 30,
+      "word_end": 37
     },
     {
       "id": 4,
-      "text": "We use examples every day",
+      "text": "In everyday life, an example might be",
       "media": {
-        "type": "image",
-        "file_path": "media/4_9a01e68a64d173e8.jpeg",
-        "url": null
-      }
+        "type": "video",
+        "file_path": "media/4_5d36e4c9f4b2c8dd.mp4",
+        "url": null,
+        "start_timestamp": 0.0
+      },
+      "word_start": 38,
+      "word_end": 44
     },
     {
       "id": 5,
-      "text": "to make things easier to understand.",
+      "text": "a sample math problem in a textbook,",
       "media": {
         "type": "video",
-        "file_path": "media/5_d280dda4dd633684.mp4",
+        "file_path": "media/5_1b27bbce91cc2644.mp4",
         "url": null,
-        "start_timestamp": 0
-      }
+        "start_timestamp": 0.0
+      },
+      "word_start": 45,
+      "word_end": 51
     },
     {
       "id": 6,
-      "text": "For instance, a teacher might use a simple math problem",
-      "media": null
+      "text": "a model behavior in a classroom,",
+      "media": {
+        "type": "image",
+        "file_path": "media/6_260ec1cc5e5f1596.jpg",
+        "url": null
+      },
+      "word_start": 52,
+      "word_end": 57
     },
     {
       "id": 7,
-      "text": "as an example before giving a harder test.",
-      "media": null
+      "text": "or a case study in a business meeting.",
+      "media": null,
+      "word_start": 58,
+      "word_end": 65
     },
     {
       "id": 8,
-      "text": "A friend might show you a photo",
-      "media": null
+      "text": "The most popular use of the term, however, is in teaching and explanation,",
+      "media": null,
+      "word_start": 66,
+      "word_end": 78
     },
     {
       "id": 9,
-      "text": "as an example of a place they want to visit.",
-      "media": null
+      "text": "where an example serves as a bridge between theory and reality.",
+      "media": null,
+      "word_start": 79,
+      "word_end": 89
     },
     {
       "id": 10,
-      "text": "In all these cases, the example acts as a helpful guide.",
-      "media": null
+      "text": "An interesting fact about the idea of an example is that",
+      "media": null,
+      "word_start": 90,
+      "word_end": 100
     },
     {
       "id": 11,
-      "text": "It makes abstract thoughts concrete",
-      "media": null
+      "text": "the ancient Greek philosopher Aristotle considered examples a powerful form of rhetorical proof,",
+      "media": null,
+      "word_start": 101,
+      "word_end": 113
     },
     {
       "id": 12,
-      "text": "and connects new information to what we already know.",
-      "media": null
+      "text": "even more persuasive than logical arguments in some situations",
+      "media": null,
+      "word_start": 114,
+      "word_end": 122
     },
     {
       "id": 13,
-      "text": "An interesting fact about examples",
-      "media": null
+      "text": "because people connect more easily with stories and specific instances than with abstract reasoning.",
+      "media": null,
+      "word_start": 123,
+      "word_end": 136
     },
     {
       "id": 14,
-      "text": "is that our brains are wired to learn from them",
-      "media": null
+      "text": "This is why teachers, speakers, and writers rely on examples",
+      "media": null,
+      "word_start": 137,
+      "word_end": 146
     },
     {
       "id": 15,
-      "text": "more effectively than from abstract rules alone.",
-      "media": null
+      "text": "to make their points stick.",
+      "media": null,
+      "word_start": 147,
+      "word_end": 151
     },
     {
       "id": 16,
-      "text": "Studies show that people remember information better",
-      "media": null
+      "text": "Without examples, many complex ideas would remain confusing",
+      "media": null,
+      "word_start": 152,
+      "word_end": 159
     },
     {
       "id": 17,
-      "text": "and can apply it more easily",
-      "media": null
-    },
-    {
-      "id": 18,
-      "text": "when it is presented with a clear, relatable example.",
-      "media": null
-    },
-    {
-      "id": 19,
-      "text": "This is why stories and real-world cases",
-      "media": null
-    },
-    {
-      "id": 20,
-      "text": "are such powerful teaching tools.",
-      "media": null
+      "text": "and out of reach for most people.",
+      "media": null,
+      "word_start": 160,
+      "word_end": 166
     }
-  ],
-  "voiceover_path": "audio/voiceover.mp3"
+  ]
 }

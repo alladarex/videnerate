@@ -1,17 +1,13 @@
 from pathlib import Path
 
-from config import PROJECTS_DIR
 from core.models.media import GifMedia, ImageMedia, Media, VideoMedia
 from services.media_thumbnail import extract_video_frame_bytes
 from ui.cache.segment_preview_cache import SegmentPreviewCache
 from ui.utils.tile_pixmap import inner_preview_edge, load_scaled_pixmap, load_scaled_pixmap_from_path
 
 
-def project_media_path(*, rel_or_abs: str, preview_cache: SegmentPreviewCache) -> Path:
-    path = Path(rel_or_abs)
-    if path.is_absolute():
-        return path
-    return (PROJECTS_DIR / preview_cache.project_title / path).resolve()
+def project_media_path(*, rel_path: str, preview_cache: SegmentPreviewCache) -> Path:
+    return preview_cache.paths.file(rel_path)
 
 
 def load_media_file_thumbnail(
@@ -27,7 +23,7 @@ def load_media_file_thumbnail(
         return None
 
     target = inner_preview_edge(tile_size_px, reserved=reserved)
-    path = project_media_path(rel_or_abs=file_path, preview_cache=preview_cache)
+    path = project_media_path(rel_path=file_path, preview_cache=preview_cache)
     pixmap = None
     if isinstance(media, VideoMedia):
         frame_bytes = extract_video_frame_bytes(path)

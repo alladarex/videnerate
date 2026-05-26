@@ -5,15 +5,15 @@ import time
 import urllib.parse
 from pathlib import Path
 
-from services.project_service import validate_project_title_for_storage
+from core.project_paths import ProjectPaths
 
 
 class SegmentPreviewCache:
     """Project-scoped temp cache for hover media previews."""
 
-    def __init__(self, project_title: str) -> None:
-        # Use the same title rules as project folder creation
-        self.project_title = validate_project_title_for_storage(project_title)
+    def __init__(self, paths: ProjectPaths) -> None:
+        self.paths = paths
+        self.project_title = paths.root.name
         self._root = Path(tempfile.gettempdir()) / "videnerate_preview_cache" / self.project_title
 
     def clear(self) -> None:

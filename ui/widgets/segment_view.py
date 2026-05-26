@@ -37,6 +37,8 @@ class SegmentView(QWidget):
 
     close_requested = Signal()
     media_selected = Signal(int, bytes)
+    segment_play_clicked = Signal()
+    current_segment_changed = Signal()
 
     _BAR_HEIGHT_PX = 56
     _DOT_PX = 12
@@ -67,6 +69,7 @@ class SegmentView(QWidget):
         self._nav_next: QPushButton | None = None
         self._dots_scroll: QScrollArea | None = None
         self._dot_buttons: list[QPushButton] = []
+        self._play_btn: QPushButton | None = None
 
         # Needed if segment view is accessible without a prior mouse click in project view
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -94,6 +97,12 @@ class SegmentView(QWidget):
         save_btn.setStyleSheet(ACTION_BUTTON)
         save_btn.clicked.connect(lambda: save_project(self._project))
 
+        self._play_btn = QPushButton("Play", self)
+        self._play_btn.setFixedHeight(36)
+        self._play_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._play_btn.setStyleSheet(ACTION_BUTTON)
+        self._play_btn.clicked.connect(self.segment_play_clicked.emit)
+
         top_row = QFrame(self)
         top_row.setObjectName("SegmentViewTopBar")
         top_row.setFixedHeight(self._BAR_HEIGHT_PX)
@@ -102,6 +111,9 @@ class SegmentView(QWidget):
         top_inner.setContentsMargins(14, 8, 10, 8)
         top_inner.setSpacing(12)
         top_inner.addWidget(self._text_label, 1)
+        top_inner.addWidget(
+            self._play_btn, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
         top_inner.addWidget(save_btn, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         top_inner.addWidget(close_btn, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
@@ -131,7 +143,7 @@ class SegmentView(QWidget):
             preview_cache=preview_cache,
             on_media_selected=lambda seg_id, b: self.media_selected.emit(seg_id, b),
         )
-        self._grid_controller.set_segment(self._current_segment())
+        self._grid_controller.set_segment(self.current_segment)
 
         self._scroll.setWidget(self._grid_host)
         self._grid_host.setSizePolicy(
@@ -211,8 +223,24 @@ class SegmentView(QWidget):
         self._grid_controller.rebuild_grid()
         self._refresh_nav_display()
 
-    def _current_segment(self) -> Segment:
+    @property
+    def current_segment(self) -> Segment:
         return self._project.segments[self._current_index]
+
+    def sync_playback_button(
+        self,
+        *,
+        playing: bool,
+        bounds: tuple[float, float],
+    ) -> None:
+        if self._play_btn is None:
+            return
+        self._play_btn.setText("Stop" if playing else "Play")
+        start, end = bounds
+        label = f"{start:.2f}s – {end:.2f}s"
+        self._play_btn.setToolTip(
+            f"Stop playback ({label})" if playing else f"Play voiceover for this segment ({label})"
+        )
 
     def set_segment(self, segment: Segment) -> None:
         for i, s in enumerate(self._project.segments):
@@ -221,7 +249,7 @@ class SegmentView(QWidget):
                 break
         else:
             raise ValueError(f"Segment id {segment.id} not found in project")
-        self._grid_controller.set_segment(self._current_segment())
+        self._grid_controller.set_segment(self.current_segment)
         self._refresh_nav_display()
 
     def showEvent(self, event: QShowEvent) -> None:
@@ -257,7 +285,7 @@ class SegmentView(QWidget):
         if index == self._current_index:
             return
         self._current_index = index
-        self._grid_controller.set_segment(self._current_segment())
+        self._grid_controller.set_segment(self.current_segment)
         self._refresh_nav_display()
 
     def _refresh_nav_display(self) -> None:
@@ -276,4 +304,6 @@ class SegmentView(QWidget):
 
         if self._dots_scroll is not None and self._dot_buttons and self._current_index < len(self._dot_buttons):
             self._dots_scroll.ensureWidgetVisible(self._dot_buttons[self._current_index])
+
+        self.current_segment_changed.emit()
 

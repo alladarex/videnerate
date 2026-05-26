@@ -5,10 +5,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# App root (repository root when running `python main.py`)
+# App root
 APP_DIR = Path(__file__).resolve().parent
 
-# "Project directory" in the sense of where user projects live
+# Project directory (where user projects live)
 PROJECTS_DIR = Path(os.getenv("VIDENERATE_PROJECTS_DIR", APP_DIR / "projects")).resolve()
 
 
@@ -28,6 +28,3 @@ MAX_TITLE_LENGTH = 20
 SEGMENT_MIN_WORDS = 5
 SEGMENT_MAX_WORDS = 13
 DEFAULT_TTS_PROVIDER = "google"  # or "elevenlabs"
-
-if __name__ == "__main__":
-    print(f"OPENAI_API_KEY: {OPENAI_API_KEY}")

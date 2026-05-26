@@ -7,17 +7,14 @@ from typing import Callable
 
 from PySide6.QtCore import QObject, Signal
 
-_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-    "Accept-Language": "en-US,en;q=0.9",
-}
+from headers import BROWSER_HEADERS
 
 
 def _fetch_url_to_file(url: str, target_path: Path) -> bool:
     try:
         if target_path.is_file():
             return True
-        req = urllib.request.Request(url, headers=_HEADERS)
+        req = urllib.request.Request(url, headers=BROWSER_HEADERS)
         with urllib.request.urlopen(req, timeout=20.0) as resp:
             target_path.write_bytes(resp.read())
         return True

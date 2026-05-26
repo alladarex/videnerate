@@ -184,7 +184,7 @@ class HoverMediaPreview(QWidget):
     def _resolve_playback_path(self, *, media_file_path: str | None = None) -> str | None:
         if media_file_path:
             path = project_media_path(
-                rel_or_abs=media_file_path, preview_cache=self._cache
+                rel_path=media_file_path, preview_cache=self._cache
             )
             if path.is_file():
                 return str(path)

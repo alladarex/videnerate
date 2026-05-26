@@ -11,11 +11,9 @@ class Project:
         self,
         segments: List[str],
         title: str = "Untitled",
-        voiceover_path: str | None = None,
     ):
         self.title = title
         self.created_at = datetime.now()
-        self.voiceover_path = voiceover_path
         if segments is None:
             raise ValueError("segments must be a list of strings (got None)")
         segment_list = [Segment(text=text, id=i) for i, text in enumerate(segments)]
@@ -37,7 +35,6 @@ class Project:
             "title": self.title,
             "created_at": self.created_at.isoformat(),
             "segments": [s.to_dict() for s in self.segments],
-            "voiceover_path": self.voiceover_path,
         }
 
     @classmethod
@@ -47,5 +44,4 @@ class Project:
         project.title = data["title"]
         project.created_at = datetime.fromisoformat(data["created_at"])
         project.segments = segments
-        project.voiceover_path = data.get("voiceover_path")
         return project

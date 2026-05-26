@@ -34,11 +34,20 @@ ENV/
 *.swo
 
 # Project specific
+tests/
+logs/
+.pytest_cache/
 *.mp3
 *.mp4
 *.jpg
 *.png
 segments.txt
+
+# Track voiceover and segment media inside projects/ (e.g. projects/example/)
+!projects/**/audio/
+!projects/**/audio/**
+!projects/**/media/
+!projects/**/media/**
 
 # Keep only the example project under projects/
 /projects/*
