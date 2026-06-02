@@ -5,12 +5,12 @@ from pathlib import Path
 from PySide6.QtCore import QEvent, QSize, QTimer, Qt
 from PySide6.QtGui import QEnterEvent, QMovie, QPixmap
 from PySide6.QtMultimedia import QVideoFrame
-from PySide6.QtWidgets import QLabel, QStackedLayout, QWidget
+from PySide6.QtWidgets import QLabel, QSizePolicy, QStackedLayout, QWidget
 
 from core.models.media import GIF_MEDIA, VIDEO_MEDIA, Media
 from ui.cache.segment_preview_cache import SegmentPreviewCache
 from ui.utils.project_media_paths import project_media_path
-from ui.styles.qss import MUTED_LABEL
+from ui.styles.qss import MUTED_LABEL, SMALL_MUTED_LABEL
 from ui.widgets.preview_download import UrlDownloadBroker
 from ui.widgets.preview_playback import SharedVideoPreviewBackend
 from ui.utils.tile_pixmap import inner_preview_edge, load_scaled_pixmap
@@ -31,6 +31,10 @@ class HoverMediaPreview(QWidget):
         parent: QWidget,
     ) -> None:
         super().__init__(parent)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
         self._tile_size_px = tile_size_px
         self._reserved = reserved
         self._placeholder_text = placeholder_text
@@ -49,8 +53,8 @@ class HoverMediaPreview(QWidget):
 
         self._thumbnail = QLabel(self)
         self._thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._thumbnail.setStyleSheet(MUTED_LABEL)
-        self._thumbnail.setText(placeholder_text)
+        self._thumbnail.setWordWrap(True)
+        self._thumbnail.setStyleSheet(SMALL_MUTED_LABEL)
         self._root.addWidget(self._thumbnail)
 
         self._video_label = QLabel(self)
@@ -79,6 +83,7 @@ class HoverMediaPreview(QWidget):
         self._hover_timer.setSingleShot(True)
         self._hover_timer.setInterval(_HOVER_DELAY_MS)
         self._hover_timer.timeout.connect(self._on_hover_delay_elapsed)
+        self._show_thumbnail()
 
     def clear_media(self) -> None:
         """Clear bound media when the segment has no selection (placeholder only)."""
@@ -127,9 +132,9 @@ class HoverMediaPreview(QWidget):
 
     def set_placeholder_text(self, text: str) -> None:
         self._placeholder_text = text
-        if self._root.currentWidget() is self._thumbnail:
-            self._thumbnail.setText(text)
-            self._thumbnail.setPixmap(QPixmap())
+        self._thumbnail.setPixmap(QPixmap())
+        self._thumbnail.setText(text)
+        self._root.setCurrentWidget(self._thumbnail)
 
     def set_thumbnail_bytes(self, thumbnail_bytes: bytes | None) -> None:
         self._show_thumbnail(thumbnail_bytes=thumbnail_bytes)

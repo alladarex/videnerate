@@ -7,7 +7,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.models.media import GIF_MEDIA, VIDEO_MEDIA
+from collections.abc import Callable
+
+from core.models.media import GIF_MEDIA, IMAGE_MEDIA, VIDEO_MEDIA
 from ui.widgets.hover_media_preview import HoverMediaPreview
 from ui.cache.segment_preview_cache import SegmentPreviewCache
 from ui.styles.qss import MUTED_LABEL
@@ -75,9 +77,9 @@ class _BaseResultTile(TileFrame):
         self._label.setStyleSheet(MUTED_LABEL)
         self._label.setText(placeholder_text)
         self._label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        content_layout = QVBoxLayout(self._content_host)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.addWidget(self._label, 1)
+        self._content_layout = QVBoxLayout(self._content_host)
+        self._content_layout.setContentsMargins(0, 0, 0, 0)
+        self._content_layout.addWidget(self._label, 1)
         root.addWidget(self._content_host, 1)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
@@ -124,11 +126,9 @@ class _HoverPlayableTile(_BaseResultTile):
         self._media_preview.bind_from_search_url(
             media_type=media_type, media_url=media_url
         )
-        content_layout = self._content_host.layout()
-        if content_layout is not None:
-            content_layout.removeWidget(self._label)
-            self._label.hide()
-            content_layout.addWidget(self._media_preview, 1)
+        self._content_layout.removeWidget(self._label)
+        self._label.hide()
+        self._content_layout.addWidget(self._media_preview, 1)
 
     def set_thumbnail_bytes(self, data: bytes) -> None:
         self._media_preview.set_thumbnail_bytes(data)
@@ -206,3 +206,55 @@ class GifTile(_HoverPlayableTile):
             media_type=GIF_MEDIA,
             parent=parent,
         )
+
+
+def build_result_tile(
+    *,
+    media_type: str,
+    url: str,
+    thumb: bytes,
+    source: str | None,
+    size_px: int,
+    preview_cache: SegmentPreviewCache,
+    parent: QWidget,
+    on_select: Callable[..., None],
+) -> QWidget:
+    """Build one search result tile and wire click to on_select(url, thumb, media_type=..., source=...)."""
+    if media_type == VIDEO_MEDIA:
+        tile = VideoTile(
+            size_px=size_px,
+            media_url=url,
+            preview_cache=preview_cache,
+            parent=parent,
+        )
+        tile.set_thumbnail_bytes(thumb)
+        tile.clicked.connect(
+            lambda u=url, b=bytes(thumb), s=source: on_select(
+                u, b, media_type=VIDEO_MEDIA, source=s
+            )
+        )
+        return tile
+    if media_type == IMAGE_MEDIA:
+        tile = ImageTile(size_px=size_px, parent=parent)
+        tile.set_thumbnail_bytes(thumb)
+        tile.clicked.connect(
+            lambda u=url, b=bytes(thumb), s=source: on_select(
+                u, b, media_type=IMAGE_MEDIA, source=s
+            )
+        )
+        return tile
+    if media_type == GIF_MEDIA:
+        tile = GifTile(
+            size_px=size_px,
+            media_url=url,
+            preview_cache=preview_cache,
+            parent=parent,
+        )
+        tile.set_thumbnail_bytes(thumb)
+        tile.clicked.connect(
+            lambda u=url, b=bytes(thumb), s=source: on_select(
+                u, b, media_type=GIF_MEDIA, source=s
+            )
+        )
+        return tile
+    raise ValueError(f"Unknown media type: {media_type}")

@@ -33,3 +33,13 @@ class SegmentSearchCache:
             query=query,
             results=list(results),
         )
+
+    def thumb_bytes_for_url(self, segment_id: int, url: str) -> bytes | None:
+        """Return cached search thumbnail bytes for a result URL, if any."""
+        state = self.get(segment_id)
+        if state is None:
+            return None
+        for item in state.results:
+            if item.url == url:
+                return bytes(item.thumb_bytes)
+        return None

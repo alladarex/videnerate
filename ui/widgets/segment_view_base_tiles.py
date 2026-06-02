@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
-from core.models.segment import Segment
 from ui.styles.qss import (
     ACCENT_ICON_LABEL,
     ACTION_BUTTON,
@@ -34,7 +33,6 @@ def build_base_tiles(
     *,
     parent: QWidget,
     tile_size_px: int,
-    segment: Segment,
     preview_cache: SegmentPreviewCache,
     on_search_clicked,
 ) -> SegmentBaseTiles:
@@ -57,10 +55,6 @@ def build_base_tiles(
         cache=preview_cache,
         parent=media_tile,
     )
-    if segment.media is None:
-        media_body.set_placeholder_text("No media selected")
-    else:
-        media_body.set_placeholder_text("Media attached")
     media_root.addWidget(media_body, 1)
 
     # (2) Upload media tile

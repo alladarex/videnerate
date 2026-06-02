@@ -2,14 +2,11 @@
 
 This module owns the dynamic tile area inside segment detail view:
 - builds/restores base and search result tiles
-- performs asynchronous media search
 - binds tile clicks to segment media selection
 - keeps the media preview tile synchronized with model/cache state
 """
 
-import threading
-
-from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QGridLayout, QLineEdit, QScrollArea, QWidget
 
 from core.models.media import (
@@ -22,30 +19,21 @@ from core.models.media import (
     VideoMedia,
 )
 from core.models.segment import Segment
-from core.models.word_timeline import WordTimeline, segment_playback_duration
+from core.models.word_timeline import WordTimeline
 from ui.utils.grid_layout import column_count_for_viewport
-from ui.widgets.search_settings import search_settings_state
 from ui.cache.segment_search_cache import SegmentSearchCache
 from ui.widgets.segment_view_base_tiles import build_base_tiles
-from ui.widgets.segment_media_tile import refresh_segment_media_tile
+from ui.widgets.segment_view_media_tile_sync import sync_media_tile
 from ui.cache.segment_preview_cache import SegmentPreviewCache
 from ui.widgets.preview_playback import SharedVideoPreviewBackend
-from ui.widgets.segment_view_search_runner import run_distributed_search
-from ui.widgets.segment_view_search_logic import (
-    build_source_distribution,
-    to_cached_results,
-)
-from ui.widgets.segment_view_result_tiles import GifTile, ImageTile, VideoTile
+from ui.widgets.segment_view_result_tiles import build_result_tile
+from ui.widgets.segment_view_search_controller import SegmentViewSearchController
 
 
-# Either this SegmentViewGridController has to inherit QObject
-class SearchWorker(QObject):
-
-    results_ready = Signal(list)
-
-
-class SegmentViewGridController:
+class SegmentViewGridController(QObject):
     """Manage segment view grid state, search lifecycle, and tile preview updates."""
+
+    _BASE_TILE_COUNT = 4
 
     def __init__(
         self,
@@ -60,6 +48,7 @@ class SegmentViewGridController:
         on_media_selected,
         word_timeline: WordTimeline,
     ) -> None:
+        super().__init__(grid_host)
         self._scroll = scroll
         self._grid_host = grid_host
         self._grid = grid
@@ -67,20 +56,26 @@ class SegmentViewGridController:
         self._grid_spacing = int(grid_spacing)
         self._cache = cache
         self._on_media_selected = on_media_selected
-        self._word_timeline = word_timeline
 
         self._tiles: list[QWidget] = []
-        self._result_tiles: list[QWidget] = []
-        self._search_worker: SearchWorker | None = None
         self._segment: Segment
 
         self.search_input: QLineEdit | None = None
         self.search_button = None
         self.search_status = None
         self._media_preview = None
-        self._selected_url: str | None = None
-        self._thumb_by_url: dict[str, bytes] = {}
         self._preview_cache = preview_cache
+
+        self._search = SegmentViewSearchController(
+            parent=self,
+            cache=self._cache,
+            word_timeline=word_timeline,
+            get_current_segment_id=lambda: self._segment.id,
+            clear_results=self._clear_results,
+            set_search_busy=self._set_search_busy,
+            apply_search_results=self._apply_search_results,
+            rebuild_grid=self.rebuild_grid,
+        )
 
     @staticmethod
     def _dispose_widget_preview(widget: QWidget) -> None:
@@ -112,8 +107,7 @@ class SegmentViewGridController:
             row = i // cols
             col = i % cols
             self._grid.addWidget(tile, row, col)
-        # Re-apply preview scaling after rebuilding
-        self._sync_media_preview()
+        self._sync_media_tile()
 
     def _reset_tiles(self) -> None:
         """Recreate base tiles and restore cached result tiles for active segment."""
@@ -122,13 +116,11 @@ class SegmentViewGridController:
                 self._dispose_widget_preview(w)
                 w.hide()
                 self._grid.removeWidget(w)
-                # destroy this object safely at the next event-loop turn
                 w.deleteLater()
             except (RuntimeError, TypeError) as e:
                 print(f"[segment_view_grid] tile teardown skipped: {e}")
 
         self._tiles = []
-        self._result_tiles = []
         self.search_input = None
         self.search_status = None
         # Release backend-held media handles before removing temp cache files.
@@ -137,7 +129,6 @@ class SegmentViewGridController:
         base = build_base_tiles(
             parent=self._grid_host,
             tile_size_px=self._tile_size_px,
-            segment=self._segment,
             preview_cache=self._preview_cache,
             on_search_clicked=self._on_search_clicked,
         )
@@ -147,92 +138,64 @@ class SegmentViewGridController:
         self.search_status = base.search_status
         self._media_preview = base.media_preview
 
-
         cached = self._cache.get(self._segment.id)
         if cached is not None:
             if self.search_input is not None:
                 self.search_input.setText(cached.query)
 
             restored = 0
-            self._selected_url = None
-            self._thumb_by_url = {}
             for item in cached.results:
                 media_type = item.type
                 url = item.url
                 b = bytes(item.thumb_bytes)
                 if media_type not in ALL_MEDIA or not url or not b:
                     raise ValueError(f"Invalid cached result: {item!r}")
-                tile = self._build_result_tile(
+                tile = build_result_tile(
                     media_type=media_type,
                     url=url,
                     thumb=b,
                     source=item.source,
+                    size_px=self._tile_size_px,
+                    preview_cache=self._preview_cache,
+                    parent=self._grid_host,
+                    on_select=self._select_media,
                 )
                 self._tiles.append(tile)
-                self._result_tiles.append(tile)
                 restored += 1
-                self._thumb_by_url[url] = b
 
-            if restored: #and self.search_status is not None:
+            if restored:
                 self.search_status.setText(f"Showing {restored} cached result(s).")
 
         # Always reflect current segment.media in the 'current' Media preview tile
-        self._sync_media_preview()
+        self._sync_media_tile()
+
+        if self._search.is_segment_searching(self._segment.id):
+            self._set_search_busy(True, "Searching…")
 
     def _set_search_busy(self, busy: bool, status: str = "") -> None:
         self.search_button.setEnabled(not busy)
         self.search_status.setText(status)
 
-    def _build_result_tile(
-        self,
-        *,
-        media_type: str,
-        url: str,
-        thumb: bytes,
-        source: str | None = None,
-    ) -> QWidget:
-        if media_type == VIDEO_MEDIA:
-            tile = VideoTile(
+    def _apply_search_results(self, results: list) -> int:
+        added = 0
+        for media_type, url, data, source in results:
+            tile = build_result_tile(
+                media_type=media_type,
+                url=url,
+                thumb=bytes(data),
+                source=source,
                 size_px=self._tile_size_px,
-                media_url=url,
                 preview_cache=self._preview_cache,
                 parent=self._grid_host,
+                on_select=self._select_media,
             )
-            tile.set_thumbnail_bytes(thumb)
-            tile.clicked.connect(
-                lambda u=url, b=bytes(thumb), s=source: self._select_media(
-                    u, b, media_type=VIDEO_MEDIA, source=s
-                )
-            )
-            return tile
-        if media_type == IMAGE_MEDIA:
-            tile = ImageTile(size_px=self._tile_size_px, parent=self._grid_host)
-            tile.set_thumbnail_bytes(thumb)
-            tile.clicked.connect(
-                lambda u=url, b=bytes(thumb), s=source: self._select_media(
-                    u, b, media_type=IMAGE_MEDIA, source=s
-                )
-            )
-            return tile
-        if media_type == GIF_MEDIA:
-            tile = GifTile(
-                size_px=self._tile_size_px,
-                media_url=url,
-                preview_cache=self._preview_cache,
-                parent=self._grid_host,
-            )
-            tile.set_thumbnail_bytes(thumb)
-            tile.clicked.connect(
-                lambda u=url, b=bytes(thumb), s=source: self._select_media(
-                    u, b, media_type=GIF_MEDIA, source=s
-                )
-            )
-            return tile
-        raise ValueError(f"Unknown media type: {media_type}")
+            self._tiles.append(tile)
+            added += 1
+        return added
 
     def _clear_results(self) -> None:
-        """Remove dynamic result tiles while keeping the 4 base tiles."""
-        for w in self._result_tiles:
+        """Remove dynamic result tiles while keeping the base tiles."""
+        for w in self._tiles[self._BASE_TILE_COUNT :]:
             try:
                 self._dispose_widget_preview(w)
                 w.hide()
@@ -240,10 +203,8 @@ class SegmentViewGridController:
                 w.deleteLater()
             except (RuntimeError, TypeError) as e:
                 print(f"[segment_view_grid] result tile teardown skipped: {e}")
-        self._result_tiles = []
-        self._tiles = self._tiles[:4]
-        self._selected_url = None
-        self._sync_media_preview()
+        self._tiles = self._tiles[: self._BASE_TILE_COUNT]
+        self._sync_media_tile()
 
     def release_preview_resources(self) -> None:
         for w in self._tiles:
@@ -251,94 +212,12 @@ class SegmentViewGridController:
         SharedVideoPreviewBackend.instance().release_source()
 
     def _on_search_clicked(self) -> None:
-        if self.search_input is None:
-            return
-        query = self.search_input.text().strip()
-        if not query:
-            self._set_search_busy(False, "Type a keyword first.")
-            return
-
-        settings = search_settings_state()
-        limit = settings.limit
-        use_google = settings.google
-        use_giphy = settings.giphy
-        use_pexels_images = settings.pexels_image
-        use_pexels_videos = settings.pexels_video
-        use_pixabay_images = settings.pixabay_image
-        use_pixabay_videos = settings.pixabay_video
-
-        if not (
-            use_google
-            or use_giphy
-            or use_pexels_images
-            or use_pexels_videos
-            or use_pixabay_images
-            or use_pixabay_videos
-        ):
-            self._set_search_busy(False, "Enable at least one supported source first.")
-            return
-
-        source_distribution = build_source_distribution(
-            limit=limit,
-            use_google=use_google,
-            use_giphy=use_giphy,
-            use_pexels_images=use_pexels_images,
-            use_pexels_videos=use_pexels_videos,
-            use_pixabay_images=use_pixabay_images,
-            use_pixabay_videos=use_pixabay_videos,
+        self._search.on_search_clicked(
+            segment=self._segment,
+            search_input=self.search_input,
+            search_button=self.search_button,
+            search_status=self.search_status,
         )
-
-        self._clear_results()
-        self._set_search_busy(True, f"Searching “{query}”…")
-
-        if self._search_worker is None:
-            self._search_worker = SearchWorker(self._grid_host)
-            self._search_worker.results_ready.connect(self._on_search_results_ready)
-
-        min_video_duration_s = segment_playback_duration(
-            self._word_timeline, self._segment
-        )
-
-        def run() -> None:
-            merged = run_distributed_search(
-                query=query,
-                limit=limit,
-                source_distribution=source_distribution,
-                min_video_duration_s=min_video_duration_s,
-            )
-            self._search_worker.results_ready.emit(merged)
-
-        threading.Thread(target=run, daemon=True).start()
-
-    def _on_search_results_ready(self, results: list) -> None:
-        """Create clickable result tiles from fetched results and cache them."""
-        if not results:
-            self._set_search_busy(False, "No results (or blocked). Try another keyword.")
-            self.rebuild_grid()
-            return
-
-        added = 0
-        self._thumb_by_url = {}
-        for media_type, url, data, source in results:
-            tile = self._build_result_tile(
-                media_type=media_type,
-                url=url,
-                thumb=bytes(data),
-                source=source,
-            )
-            self._tiles.append(tile)
-            self._result_tiles.append(tile)
-            added += 1
-            self._thumb_by_url[url] = bytes(data)
-
-        self._cache.set(
-            self._segment.id,
-            query=self.search_input.text().strip(),
-            results=to_cached_results(results),
-        )
-
-        self._set_search_busy(False, f"Showing {added}/{search_settings_state().limit} result(s).")
-        self.rebuild_grid()
 
     def _select_media(
         self,
@@ -354,16 +233,17 @@ class SegmentViewGridController:
             self._segment.set_media(VideoMedia(url=url, source=source))
         if media_type == GIF_MEDIA:
             self._segment.set_media(GifMedia(url=url, source=source))
-        self._selected_url = url
         self._on_media_selected(self._segment.id, thumb_bytes)
-        self._sync_media_preview(thumb_bytes=thumb_bytes)
+        self._sync_media_tile(thumb_bytes)
 
-    def _sync_media_preview(self, *, thumb_bytes: bytes | None = None) -> None:
-        refresh_segment_media_tile(
+    def _sync_media_tile(self, thumb_bytes: bytes | None = None) -> None:
+        if self._media_preview is None:
+            return
+        sync_media_tile(
             segment=self._segment,
             media_preview=self._media_preview,
             preview_cache=self._preview_cache,
             tile_size_px=self._tile_size_px,
-            thumb_by_url=self._thumb_by_url,
+            search_cache=self._cache,
             thumb_bytes=thumb_bytes,
         )
