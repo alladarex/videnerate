@@ -175,8 +175,12 @@ def _download_url_to_path(url: str, dest_path: Path, *, timeout_s: float = 20.0)
     dest_path.write_bytes(data)
 
 
-def _ensure_media_persisted(paths: ProjectPaths, segment_id: int, media: Media) -> Media:
-    """Return a Media with a stable file_path under media/ (downloading/copying if needed)."""
+def _ensure_media_persisted(paths: ProjectPaths, segment_id: int, media: Media) -> None:
+    """Ensure media is persisted under media/ by modifying media object.
+
+    If media.url is set, downloads it into media/ and replaces it with file_path
+    (clearing url). If media.file_path points outside media/, copies it into media/.
+    """
     media_dir = paths.media_dir
     media_dir.mkdir(parents=True, exist_ok=True)
 
@@ -188,32 +192,26 @@ def _ensure_media_persisted(paths: ProjectPaths, segment_id: int, media: Media) 
                 src.relative_to(media_dir.resolve())
                 # Already in media dir, keep as relative path for portability
                 rel = _rel_path(paths, src)
-                if isinstance(media, ImageMedia):
-                    return ImageMedia(file_path=rel)
-                if isinstance(media, GifMedia):
-                    return GifMedia(file_path=rel)
-                if isinstance(media, VideoMedia):
-                    return VideoMedia(file_path=rel, start_timestamp=media.start_timestamp)
+                media.set_file_path(rel)
+                return
             except ValueError:
                 pass
 
             # Copy into media dir
-            ext = src.suffix.lower() or (
-                ".jpg" if isinstance(media, ImageMedia) else ".gif" if isinstance(media, GifMedia) else ".mp4"
-            )
+            ext = src.suffix.lower()
+            if not ext:
+                raise ValueError(
+                    f"Cannot persist media from extensionless path: {src} (segment_id={segment_id})"
+                )
             name = f"{segment_id}_{hashlib.sha256(str(src).encode('utf-8')).hexdigest()[:16]}{ext}"
             dest = media_dir / name
             if not dest.exists():
                 shutil.copyfile(src, dest)
             rel = _rel_path(paths, dest)
-            if isinstance(media, ImageMedia):
-                return ImageMedia(file_path=rel)
-            if isinstance(media, GifMedia):
-                return GifMedia(file_path=rel)
-            if isinstance(media, VideoMedia):
-                return VideoMedia(file_path=rel, start_timestamp=media.start_timestamp)
+            media.set_file_path(rel)
+            return
 
-        return media
+        return
 
     # Otherwise, download from URL if present
     if media.url:
@@ -225,18 +223,14 @@ def _ensure_media_persisted(paths: ProjectPaths, segment_id: int, media: Media) 
         if not dest.exists():
             _download_url_to_path(url, dest)
         rel = _rel_path(paths, dest)
-        if isinstance(media, ImageMedia):
-            return ImageMedia(file_path=rel)
-        if isinstance(media, GifMedia):
-            return GifMedia(file_path=rel)
-        if isinstance(media, VideoMedia):
-            return VideoMedia(file_path=rel, start_timestamp=media.start_timestamp)
+        media.set_file_path(rel)
+        return
 
-    return media
+    return
 
 
 def _cleanup_unused_project_media(paths: ProjectPaths, project: Project) -> None:
-    """Delete unreferenced files in `<project>/media/` based on current segment media."""
+    """Delete unreferenced files in <project>/media/ based on current segment media."""
     media_dir = paths.media_dir
     if not media_dir.is_dir():
         return
@@ -291,7 +285,7 @@ def save_project(project: Project) -> Path:
         if seg.media is None:
             continue
         try:
-            seg.media = _ensure_media_persisted(paths, seg.id, seg.media)
+            _ensure_media_persisted(paths, seg.id, seg.media)
         except Exception:
             # Don't block saving the rest of the project on a single media failure
             continue

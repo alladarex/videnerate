@@ -5,31 +5,35 @@ import urllib.request
 from config import PIXABAY_API_KEY
 from headers import VIDENERATE_HEADERS
 
-_LOG_TAG = "pixabay"
+SOURCE = "Pixabay"
 _VIDEO_MIN_SHORT_EDGE = 720
 _VIDEO_MAX_SHORT_EDGE = 1080
+_PIXABAY_MIN_PER_PAGE = 3 # Pixabay requires at least 3 results
+_PIXABAY_MAX_PER_PAGE = 200
+_FILTER_HEADROOM = 3 # Multiplier for limit to ensure we get enough results after filtering
 _VIDEO_QUALITIES = ("large", "medium", "small", "tiny")
+_TIMEOUT_S = 12.0
 
 
 def _is_valid_http_url(value: object) -> bool:
     return isinstance(value, str) and value.startswith("http")
 
 
-def _fetch_json(url: str, *, timeout_s: float) -> dict:
+def _fetch_json(url: str) -> dict:
     req = urllib.request.Request(url, headers=VIDENERATE_HEADERS)
-    with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+    with urllib.request.urlopen(req, timeout=_TIMEOUT_S) as resp:
         payload = resp.read().decode("utf-8", errors="ignore")
     return json.loads(payload)
 
 
-def _fetch_bytes(url: str, *, timeout_s: float) -> bytes | None:
+def _fetch_bytes(url: str) -> bytes | None:
     try:
         req = urllib.request.Request(url, headers=VIDENERATE_HEADERS)
-        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+        with urllib.request.urlopen(req, timeout=_TIMEOUT_S) as resp:
             data = resp.read()
         return data or None
     except Exception as e:
-        print(f"[{_LOG_TAG}] _fetch_bytes failed for {url}: {e}")
+        print(f"[{SOURCE}] _fetch_bytes failed for {url}: {e}")
         return None
 
 
@@ -82,16 +86,16 @@ def _pick_video_urls(result: dict) -> tuple[str | None, str | None]:
 
 
 def fetch_pixabay_image_results(
-    query: str, *, limit: int = 10, timeout_s: float = 12.0
-) -> list[tuple[str, bytes]]:
+    query: str, *, limit: int = 10
+) -> list[tuple[str, bytes, str]]:
+    """Fetch (image_url, thumbnail_bytes, source) through Pixabay image search."""
     if not PIXABAY_API_KEY:
         return []
-    q = (query or "").strip()
+    q = query.strip()
     if not q:
         return []
 
-    # Pixabay requires per_page >= 3
-    per_page = max(3, min(limit, 80))
+    per_page = max(_PIXABAY_MIN_PER_PAGE, min(limit, _PIXABAY_MAX_PER_PAGE))
     url = "https://pixabay.com/api/?" + urllib.parse.urlencode(
         {
             "key": PIXABAY_API_KEY,
@@ -101,37 +105,43 @@ def fetch_pixabay_image_results(
         }
     )
     try:
-        payload = _fetch_json(url, timeout_s=timeout_s)
+        payload = _fetch_json(url)
     except Exception as e:
-        print(f"[{_LOG_TAG}] fetch_pixabay_image_results failed for query '{q}': {e}")
+        print(f"[{SOURCE}] fetch_pixabay_image_results failed for query '{q}': {e}")
         return []
 
-    out: list[tuple[str, bytes]] = []
+    out: list[tuple[str, bytes, str]] = []
     for result in payload.get("hits") or []:
         if not isinstance(result, dict):
             continue
-        source_url, thumb_url = _pick_image_urls(result)
-        if not source_url or not thumb_url:
+        media_url, thumb_url = _pick_image_urls(result)
+        if not media_url or not thumb_url:
             continue
-        b = _fetch_bytes(thumb_url, timeout_s=timeout_s)
+        b = _fetch_bytes(thumb_url)
         if b:
-            out.append((source_url, b))
+            out.append((media_url, b, SOURCE))
         if len(out) >= limit:
             break
     return out[:limit]
 
 
 def fetch_pixabay_video_results(
-    query: str, *, limit: int = 10, timeout_s: float = 12.0
-) -> list[tuple[str, bytes]]:
+    query: str,
+    *,
+    limit: int = 10,
+    min_duration_s: float,
+) -> list[tuple[str, bytes, str]]:
+    """Fetch (video_url, thumbnail_bytes, source) through Pixabay video search."""
     if not PIXABAY_API_KEY:
         return []
-    q = (query or "").strip()
+    q = query.strip()
     if not q:
         return []
 
-    # Pixabay requires per_page >= 3
-    per_page = max(3, min(limit, 80))
+    per_page = max(
+        _PIXABAY_MIN_PER_PAGE,
+        min(limit * _FILTER_HEADROOM, _PIXABAY_MAX_PER_PAGE),
+    )
     url = "https://pixabay.com/api/videos/?" + urllib.parse.urlencode(
         {
             "key": PIXABAY_API_KEY,
@@ -141,21 +151,24 @@ def fetch_pixabay_video_results(
         }
     )
     try:
-        payload = _fetch_json(url, timeout_s=timeout_s)
+        payload = _fetch_json(url)
     except Exception as e:
-        print(f"[{_LOG_TAG}] fetch_pixabay_video_results failed for query '{q}': {e}")
+        print(f"[{SOURCE}] fetch_pixabay_video_results failed for query '{q}': {e}")
         return []
 
-    out: list[tuple[str, bytes]] = []
+    out: list[tuple[str, bytes, str]] = []
     for result in payload.get("hits") or []:
         if not isinstance(result, dict):
+            continue
+        duration = result.get("duration")
+        if not isinstance(duration, (int, float)) or duration < min_duration_s:
             continue
         video_url, thumb_url = _pick_video_urls(result)
         if not video_url or not thumb_url:
             continue
-        b = _fetch_bytes(thumb_url, timeout_s=timeout_s)
+        b = _fetch_bytes(thumb_url)
         if b:
-            out.append((video_url, b))
+            out.append((video_url, b, SOURCE))
         if len(out) >= limit:
             break
     return out[:limit]

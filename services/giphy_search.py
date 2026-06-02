@@ -5,18 +5,21 @@ import urllib.request
 from config import GIPHY_API_KEY
 from headers import VIDENERATE_HEADERS
 
+_TIMEOUT_S = 12.0
+SOURCE = "Giphy"
 
-def _fetch_json(url: str, *, timeout_s: float) -> dict:
+
+def _fetch_json(url: str) -> dict:
     req = urllib.request.Request(url, headers=VIDENERATE_HEADERS)
-    with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+    with urllib.request.urlopen(req, timeout=_TIMEOUT_S) as resp:
         payload = resp.read().decode("utf-8", errors="ignore")
     return json.loads(payload)
 
 
-def _fetch_bytes(url: str, *, timeout_s: float) -> bytes | None:
+def _fetch_bytes(url: str) -> bytes | None:
     try:
         req = urllib.request.Request(url, headers=VIDENERATE_HEADERS)
-        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+        with urllib.request.urlopen(req, timeout=_TIMEOUT_S) as resp:
             data = resp.read()
         return data or None
     except Exception as e:
@@ -36,12 +39,12 @@ def _pick_url(images: dict, *names: str) -> str | None:
 
 
 def fetch_giphy_gif_results(
-    query: str, *, limit: int = 10, timeout_s: float = 12.0
-) -> list[tuple[str, bytes]]:
-    """Fetch (gif_url, thumbnail_bytes) from Giphy search."""
+    query: str, *, limit: int = 10
+) -> list[tuple[str, bytes, str]]:
+    """Fetch (gif_url, thumbnail_bytes, source) through Giphy search."""
     if not GIPHY_API_KEY:
         return []
-    q = (query or "").strip()
+    q = query.strip()
     if not q:
         return []
 
@@ -55,13 +58,13 @@ def fetch_giphy_gif_results(
         }
     )
     try:
-        payload = _fetch_json(url, timeout_s=timeout_s)
+        payload = _fetch_json(url)
     except Exception as e:
-        print(f"[giphy] fetch_giphy_gif_results failed for query '{q}': {e}")
+        print(f"[{SOURCE}] fetch_giphy_gif_results failed for query '{q}': {e}")
         return []
 
     items = payload.get("data") or []
-    out: list[tuple[str, bytes]] = []
+    out: list[tuple[str, bytes, str]] = []
     for item in items:
         if not isinstance(item, dict):
             continue
@@ -80,9 +83,9 @@ def fetch_giphy_gif_results(
         if not gif_url or not thumb_url:
             continue
 
-        thumb = _fetch_bytes(thumb_url, timeout_s=timeout_s)
+        thumb = _fetch_bytes(thumb_url)
         if thumb:
-            out.append((gif_url, thumb))
+            out.append((gif_url, thumb, SOURCE))
         if len(out) >= limit:
             break
 

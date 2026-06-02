@@ -1,34 +1,38 @@
 import json
+import math
 import urllib.parse
 import urllib.request
 
 from config import PEXELS_API_KEY
 from headers import pexels_headers
 
-_LOG_TAG = "pexels"
+SOURCE = "Pexels"
 _VIDEO_MIN_SHORT_EDGE = 720
 _VIDEO_MAX_SHORT_EDGE = 1080
+_PEXELS_MAX_PER_PAGE = 80
+_FILTER_HEADROOM = 3 # Multiplier for limit to ensure we get enough results after filtering
+_TIMEOUT_S = 12.0
 
 
 def _is_valid_http_url(value: object) -> bool:
     return isinstance(value, str) and value.startswith("http")
 
 
-def _fetch_json(url: str, *, timeout_s: float) -> dict:
+def _fetch_json(url: str) -> dict:
     req = urllib.request.Request(url, headers=pexels_headers())
-    with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+    with urllib.request.urlopen(req, timeout=_TIMEOUT_S) as resp:
         payload = resp.read().decode("utf-8", errors="ignore")
     return json.loads(payload)
 
 
-def _fetch_bytes(url: str, *, timeout_s: float) -> bytes | None:
+def _fetch_bytes(url: str) -> bytes | None:
     try:
         req = urllib.request.Request(url, headers=pexels_headers())
-        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+        with urllib.request.urlopen(req, timeout=_TIMEOUT_S) as resp:
             data = resp.read()
         return data or None
     except Exception as e:
-        print(f"[{_LOG_TAG}] _fetch_bytes failed for {url}: {e}")
+        print(f"[{SOURCE}] _fetch_bytes failed for {url}: {e}")
         return None
 
 
@@ -78,68 +82,76 @@ def _pick_video_urls(result: dict) -> tuple[str | None, str | None]:
 
 
 def fetch_pexels_image_results(
-    query: str, *, limit: int = 10, timeout_s: float = 12.0
-) -> list[tuple[str, bytes]]:
+    query: str, *, limit: int = 10
+) -> list[tuple[str, bytes, str]]:
+    """Fetch (image_url, thumbnail_bytes, source) through Pexels image search."""
     if not PEXELS_API_KEY:
         return []
-    q = (query or "").strip()
+    q = query.strip()
     if not q:
         return []
 
-    per_page = max(1, min(limit, 80))
+    per_page = min(limit, _PEXELS_MAX_PER_PAGE)
     url = "https://api.pexels.com/v1/search?" + urllib.parse.urlencode(
         {"query": q, "per_page": per_page}
     )
     try:
-        payload = _fetch_json(url, timeout_s=timeout_s)
+        payload = _fetch_json(url)
     except Exception as e:
-        print(f"[{_LOG_TAG}] fetch_pexels_image_results failed for query '{q}': {e}")
+        print(f"[{SOURCE}] fetch_pexels_image_results failed for query '{q}': {e}")
         return []
 
-    out: list[tuple[str, bytes]] = []
+    out: list[tuple[str, bytes, str]] = []
     for result in payload.get("photos") or []:
         if not isinstance(result, dict):
             continue
-        source_url, thumb_url = _pick_image_urls(result)
-        if not source_url or not thumb_url:
+        media_url, thumb_url = _pick_image_urls(result)
+        if not media_url or not thumb_url:
             continue
-        b = _fetch_bytes(thumb_url, timeout_s=timeout_s)
+        b = _fetch_bytes(thumb_url)
         if b:
-            out.append((source_url, b))
+            out.append((media_url, b, SOURCE))
         if len(out) >= limit:
             break
     return out[:limit]
 
 
 def fetch_pexels_video_results(
-    query: str, *, limit: int = 10, timeout_s: float = 12.0
-) -> list[tuple[str, bytes]]:
+    query: str,
+    *,
+    limit: int = 10,
+    min_duration_s: float,
+) -> list[tuple[str, bytes, str]]:
+    """Fetch (video_url, thumbnail_bytes, source) through Pexels video search."""
     if not PEXELS_API_KEY:
         return []
-    q = (query or "").strip()
+    q = query.strip()
     if not q:
         return []
 
-    per_page = max(1, min(limit, 80))
-    url = "https://api.pexels.com/videos/search?" + urllib.parse.urlencode(
-        {"query": q, "per_page": per_page}
-    )
+    per_page = min(limit * _FILTER_HEADROOM, _PEXELS_MAX_PER_PAGE)
+    params: dict[str, str | int] = {
+        "query": q,
+        "per_page": per_page,
+        "min_duration": math.ceil(min_duration_s),
+    }
+    url = "https://api.pexels.com/videos/search?" + urllib.parse.urlencode(params)
     try:
-        payload = _fetch_json(url, timeout_s=timeout_s)
+        payload = _fetch_json(url)
     except Exception as e:
-        print(f"[{_LOG_TAG}] fetch_pexels_video_results failed for query '{q}': {e}")
+        print(f"[{SOURCE}] fetch_pexels_video_results failed for query '{q}': {e}")
         return []
 
-    out: list[tuple[str, bytes]] = []
+    out: list[tuple[str, bytes, str]] = []
     for result in payload.get("videos") or []:
         if not isinstance(result, dict):
             continue
         video_url, thumb_url = _pick_video_urls(result)
         if not video_url or not thumb_url:
             continue
-        b = _fetch_bytes(thumb_url, timeout_s=timeout_s)
+        b = _fetch_bytes(thumb_url)
         if b:
-            out.append((video_url, b))
+            out.append((video_url, b, SOURCE))
         if len(out) >= limit:
             break
     return out[:limit]

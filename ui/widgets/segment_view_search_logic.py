@@ -71,10 +71,15 @@ def build_source_distribution(
 
 
 def to_cached_results(
-    items: list[tuple[str, str, bytes]],
+    items: list[tuple[str, str, bytes, str]],
 ) -> list[SegmentSearchResult]:
     """Convert normalized items to cache payload."""
     return [
-        SegmentSearchResult(type=media_type, url=url, thumb_bytes=bytes(thumb_bytes))
-        for media_type, url, thumb_bytes in items
+        SegmentSearchResult(
+            type=media_type,
+            url=url,
+            thumb_bytes=bytes(thumb_bytes),
+            source=source,
+        )
+        for media_type, url, thumb_bytes, source in items
     ]

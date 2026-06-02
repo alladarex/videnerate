@@ -15,11 +15,11 @@ from PySide6.QtWidgets import (
 )
 
 from core.models.segment import Segment
-from core.models.word_timeline import WordTimeline, segment_playback_bounds
 from core.models.project import Project
 from core.project_paths import ProjectPaths
-from services.alignment_service import load_word_timeline
 from services.project_service import save_project
+from ui.dialogs.export_dialog import ExportDialog
+from ui.dialogs.missing_media_dialog import MissingMediaDialog
 from ui.styles.qss import ACTION_BUTTON, TITLE_LABEL, top_bar_style
 from ui.cache.segment_preview_cache import SegmentPreviewCache
 from ui.utils.grid_layout import column_count_for_viewport
@@ -35,7 +35,6 @@ class ProjectWindow(QMainWindow):
         super().__init__()
         self._project = project
         self._paths = ProjectPaths.from_title(project.title)
-        self._word_timeline: WordTimeline = load_word_timeline(self._paths)
         self._voiceover_btn: QPushButton | None = None
         self._stack: QStackedWidget | None = None
         self._project_view: QWidget | None = None
@@ -64,31 +63,23 @@ class ProjectWindow(QMainWindow):
         save_shortcut.activated.connect(self._save_project)
 
     def _sync_playback_buttons(self) -> None:
-        """Keep project and segment play buttons in sync with playback state."""
+        """Keep project voiceover play button in sync with playback state."""
         if self._voiceover_btn is not None:
             self._voiceover_btn.setText(self._voiceover.full_play_button_text())
-        if self._segment_view is not None:
-            seg = self._segment_view.current_segment
-            self._segment_view.sync_playback_button(
-                playing=self._voiceover.is_playing_segment(seg.id),
-                bounds=self._segment_playback_bounds(seg),
-            )
-
-    def _segment_playback_bounds(self, segment: Segment) -> tuple[float, float]:
-        return segment_playback_bounds(self._word_timeline, segment)
 
     def _save_project(self) -> None:
         save_project(self._project)
 
+    def _on_export_clicked(self) -> None:
+        any_missing = any(seg.media is None for seg in self._project.segments)
+        if any_missing:
+            warning = MissingMediaDialog(self)
+            if warning.exec() != MissingMediaDialog.DialogCode.Accepted:
+                return
+        ExportDialog(self._project, self._paths, self).exec()
+
     def _toggle_voiceover(self) -> None:
         self._voiceover.toggle_full()
-
-    def _toggle_segment_voiceover(self) -> None:
-        if self._segment_view is None:
-            return
-        seg = self._segment_view.current_segment
-        start, end = self._segment_playback_bounds(seg)
-        self._voiceover.toggle_segment(seg.id, start, end)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self._voiceover.stop()
@@ -121,6 +112,13 @@ class ProjectWindow(QMainWindow):
         save_btn.setStyleSheet(ACTION_BUTTON)
         save_btn.clicked.connect(self._save_project)
 
+        export_btn = QPushButton("Export", self._project_view)
+        export_btn.setFixedHeight(36)
+        export_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        export_btn.setStyleSheet(ACTION_BUTTON)
+        export_btn.setToolTip("Export project to video")
+        export_btn.clicked.connect(self._on_export_clicked)
+
         self._voiceover_btn = QPushButton("Play voiceover", self._project_view)
         self._voiceover_btn.setFixedHeight(36)
         self._voiceover_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -138,6 +136,9 @@ class ProjectWindow(QMainWindow):
         top_inner.addWidget(header, 1)
         top_inner.addWidget(
             save_btn, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        top_inner.addWidget(
+            export_btn, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
         top_inner.addWidget(
             self._voiceover_btn, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
@@ -184,15 +185,15 @@ class ProjectWindow(QMainWindow):
 
         self._segment_view = SegmentView(
             project=self._project,
+            paths=self._paths,
             tile_size_px=self._tile_size_px,
             grid_spacing=self._grid_spacing,
             preview_cache=self._preview_cache,
+            voiceover=self._voiceover,
             parent=self._stack,
         )
         self._segment_view.close_requested.connect(self._show_project_view)
         self._segment_view.media_selected.connect(self._on_media_selected)
-        self._segment_view.segment_play_clicked.connect(self._toggle_segment_voiceover)
-        self._segment_view.current_segment_changed.connect(self._on_segment_view_changed)
         self._stack.addWidget(self._segment_view)
 
         self._stack.setCurrentIndex(0)
@@ -231,14 +232,6 @@ class ProjectWindow(QMainWindow):
     def _open_segment_view(self, segment: Segment) -> None:
         self._segment_view.set_segment(segment)
         self._stack.setCurrentIndex(1)
-        self._sync_playback_buttons()
-
-    def _on_segment_view_changed(self) -> None:
-        if self._segment_view is None:
-            return
-        self._voiceover.on_active_segment_changed(
-            self._segment_view.current_segment.id
-        )
         self._sync_playback_buttons()
 
     def _show_project_view(self) -> None:

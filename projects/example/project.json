@@ -7,8 +7,9 @@
       "text": "The word 'example' most commonly refers to a specific instance",
       "media": {
         "type": "image",
-        "file_path": "media/0_a976cd84cb842945.png",
-        "url": null
+        "file_path": "media/0_70153881bf08ed58.jpg",
+        "url": null,
+        "source": "https://www.makemyassignments.com/blog/how-to-integrate-real-life-examples-into-your-academic-writing/"
       },
       "word_start": 0,
       "word_end": 9
@@ -20,7 +21,8 @@
         "type": "video",
         "file_path": "media/1_c9ba6dea338549ff.mp4",
         "url": null,
-        "start_timestamp": 0.0
+        "start_timestamp": 0.0,
+        "source": null
       },
       "word_start": 10,
       "word_end": 18
@@ -32,7 +34,8 @@
         "type": "video",
         "file_path": "media/2_a361f2b9516a1af4.mp4",
         "url": null,
-        "start_timestamp": 0.0
+        "start_timestamp": 0.0,
+        "source": null
       },
       "word_start": 19,
       "word_end": 29
@@ -44,7 +47,8 @@
         "type": "video",
         "file_path": "media/3_c8502a63f4f1d025.mp4",
         "url": null,
-        "start_timestamp": 0.0
+        "start_timestamp": 0.0,
+        "source": null
       },
       "word_start": 30,
       "word_end": 37
@@ -56,7 +60,8 @@
         "type": "video",
         "file_path": "media/4_5d36e4c9f4b2c8dd.mp4",
         "url": null,
-        "start_timestamp": 0.0
+        "start_timestamp": 0.0,
+        "source": null
       },
       "word_start": 38,
       "word_end": 44
@@ -68,7 +73,8 @@
         "type": "video",
         "file_path": "media/5_1b27bbce91cc2644.mp4",
         "url": null,
-        "start_timestamp": 0.0
+        "start_timestamp": 0.0,
+        "source": null
       },
       "word_start": 45,
       "word_end": 51
@@ -79,7 +85,8 @@
       "media": {
         "type": "image",
         "file_path": "media/6_260ec1cc5e5f1596.jpg",
-        "url": null
+        "url": null,
+        "source": null
       },
       "word_start": 52,
       "word_end": 57
@@ -87,21 +94,38 @@
     {
       "id": 7,
       "text": "or a case study in a business meeting.",
-      "media": null,
+      "media": {
+        "type": "video",
+        "file_path": "media/7_b512c30b3413b3f3.mp4",
+        "url": null,
+        "start_timestamp": 0.0,
+        "source": null
+      },
       "word_start": 58,
       "word_end": 65
     },
     {
       "id": 8,
       "text": "The most popular use of the term, however, is in teaching and explanation,",
-      "media": null,
+      "media": {
+        "type": "image",
+        "file_path": "media/8_b67cf2bde7c2b2ce.jpg",
+        "url": null,
+        "source": "http://clipart-library.com/clipart/yTkrBoz7c.htm"
+      },
       "word_start": 66,
       "word_end": 78
     },
     {
       "id": 9,
       "text": "where an example serves as a bridge between theory and reality.",
-      "media": null,
+      "media": {
+        "type": "video",
+        "file_path": "media/9_07d85472d9600a26.mp4",
+        "url": null,
+        "start_timestamp": 0.0,
+        "source": null
+      },
       "word_start": 79,
       "word_end": 89
     },
@@ -115,7 +139,13 @@
     {
       "id": 11,
       "text": "the ancient Greek philosopher Aristotle considered examples a powerful form of rhetorical proof,",
-      "media": null,
+      "media": {
+        "type": "video",
+        "file_path": "media/11_c4cb16bfaa0f3e5e.mp4",
+        "url": null,
+        "start_timestamp": 0.0,
+        "source": "Pexels"
+      },
       "word_start": 101,
       "word_end": 113
     },
@@ -136,7 +166,12 @@
     {
       "id": 14,
       "text": "This is why teachers, speakers, and writers rely on examples",
-      "media": null,
+      "media": {
+        "type": "image",
+        "file_path": "media/14_27a86a1ed08a066f.png",
+        "url": null,
+        "source": "https://pngtree.com/freepng/i-love-you-text-lettering-with-hearts-of-free-vector-and-png_8525791.html"
+      },
       "word_start": 137,
       "word_end": 146
     },
@@ -157,7 +192,13 @@
     {
       "id": 17,
       "text": "and out of reach for most people.",
-      "media": null,
+      "media": {
+        "type": "video",
+        "file_path": "media/17_a8776b09ee89fc46.mp4",
+        "url": null,
+        "start_timestamp": 0.0,
+        "source": null
+      },
       "word_start": 160,
       "word_end": 166
     }

@@ -38,7 +38,7 @@ class WordTimeline:
         """Return segment start/end in seconds for playback and export.
 
         WordSpan.end already runs through silence before the next word (see
-        audio_alignment._timeline_from_asr); bounds are just the span endpoints.
+        audio_alignment._timeline_from_asr), bounds are just the span endpoints.
         """
         if word_start < 0 or word_end >= len(self.words) or word_start > word_end:
             raise IndexError("word range out of bounds for timeline")
@@ -62,7 +62,7 @@ def segment_playback_bounds(timeline: WordTimeline, segment: Segment) -> tuple[f
     """Derive segment start/end seconds from word indices and the global timeline."""
     if segment.word_start is None or segment.word_end is None:
         raise ValueError(
-            f"Segment {segment.id} is missing word_start/word_end."
+            f"Segment '{segment.text}' (id={segment.id}) is missing word_start/word_end."
         )
     start, end = timeline.segment_bounds(segment.word_start, segment.word_end)
     if end <= start:
@@ -71,3 +71,9 @@ def segment_playback_bounds(timeline: WordTimeline, segment: Segment) -> tuple[f
             f"end ({end}) must be greater than start ({start})."
         )
     return start, end
+
+
+def segment_playback_duration(timeline: WordTimeline, segment: Segment) -> float:
+    """Return segment length in seconds from word-index playback bounds."""
+    start, end = segment_playback_bounds(timeline, segment)
+    return end - start

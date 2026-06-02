@@ -6,6 +6,7 @@ class SegmentSearchResult:
     type: str
     url: str
     thumb_bytes: bytes
+    source: str
 
 
 @dataclass

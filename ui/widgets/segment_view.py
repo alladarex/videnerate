@@ -14,6 +14,9 @@ from PySide6.QtWidgets import (
 
 from core.models.project import Project
 from core.models.segment import Segment
+from core.models.word_timeline import segment_playback_bounds
+from core.project_paths import ProjectPaths
+from services.alignment_service import load_word_timeline
 from services.project_service import save_project
 from ui.styles.qss import (
     ACTION_BUTTON,
@@ -28,6 +31,7 @@ from ui.styles.qss import (
 from ui.cache.segment_preview_cache import SegmentPreviewCache
 from ui.cache.segment_search_cache import SegmentSearchCache
 from ui.widgets.segment_view_grid import SegmentViewGridController
+from ui.widgets.voiceover_playback import VoiceoverPlaybackController
 
 
 
@@ -37,8 +41,6 @@ class SegmentView(QWidget):
 
     close_requested = Signal()
     media_selected = Signal(int, bytes)
-    segment_play_clicked = Signal()
-    current_segment_changed = Signal()
 
     _BAR_HEIGHT_PX = 56
     _DOT_PX = 12
@@ -48,13 +50,18 @@ class SegmentView(QWidget):
         self,
         *,
         project: Project,
+        paths: ProjectPaths,
         tile_size_px: int,
         grid_spacing: int,
         preview_cache: SegmentPreviewCache,
+        voiceover: VoiceoverPlaybackController,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._project = project
+        self._word_timeline = load_word_timeline(paths)
+        self._voiceover = voiceover
+        self._voiceover.state_changed.connect(self._sync_playback_button)
         self._tile_size_px = tile_size_px
         self._grid_spacing = grid_spacing
         self._current_index = 0
@@ -101,7 +108,7 @@ class SegmentView(QWidget):
         self._play_btn.setFixedHeight(36)
         self._play_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._play_btn.setStyleSheet(ACTION_BUTTON)
-        self._play_btn.clicked.connect(self.segment_play_clicked.emit)
+        self._play_btn.clicked.connect(self._toggle_segment_voiceover)
 
         top_row = QFrame(self)
         top_row.setObjectName("SegmentViewTopBar")
@@ -142,6 +149,7 @@ class SegmentView(QWidget):
             cache=self._cache,
             preview_cache=preview_cache,
             on_media_selected=lambda seg_id, b: self.media_selected.emit(seg_id, b),
+            word_timeline=self._word_timeline,
         )
         self._grid_controller.set_segment(self.current_segment)
 
@@ -227,16 +235,20 @@ class SegmentView(QWidget):
     def current_segment(self) -> Segment:
         return self._project.segments[self._current_index]
 
-    def sync_playback_button(
-        self,
-        *,
-        playing: bool,
-        bounds: tuple[float, float],
-    ) -> None:
+    def _segment_playback_bounds(self, segment: Segment) -> tuple[float, float]:
+        return segment_playback_bounds(self._word_timeline, segment)
+
+    def _toggle_segment_voiceover(self) -> None:
+        seg = self.current_segment
+        start, end = self._segment_playback_bounds(seg)
+        self._voiceover.toggle_segment(seg.id, start, end)
+
+    def _sync_playback_button(self, *_args: object) -> None:
         if self._play_btn is None:
             return
+        playing = self._voiceover.is_playing_segment(self.current_segment.id)
+        start, end = self._segment_playback_bounds(self.current_segment)
         self._play_btn.setText("Stop" if playing else "Play")
-        start, end = bounds
         label = f"{start:.2f}s – {end:.2f}s"
         self._play_btn.setToolTip(
             f"Stop playback ({label})" if playing else f"Play voiceover for this segment ({label})"
@@ -305,5 +317,6 @@ class SegmentView(QWidget):
         if self._dots_scroll is not None and self._dot_buttons and self._current_index < len(self._dot_buttons):
             self._dots_scroll.ensureWidgetVisible(self._dot_buttons[self._current_index])
 
-        self.current_segment_changed.emit()
+        self._voiceover.on_active_segment_changed(self.current_segment.id)
+        self._sync_playback_button()
 

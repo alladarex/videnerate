@@ -8,6 +8,8 @@ from typing import Optional
 
 from headers import BROWSER_HEADERS, ddg_api_headers
 
+_TIMEOUT_S = 12.0
+
 
 def _ddg_vqd_from_html(html: str) -> Optional[str]:
     """Extract DuckDuckGo vqd token required for image API requests."""
@@ -20,17 +22,19 @@ def _ddg_vqd_from_html(html: str) -> Optional[str]:
     return m.group(1)
 
 
-def _fetch_ddg_thumb_results(
-    query: str, *, limit: int = 10, timeout_s: float = 12.0
-) -> list[tuple[str, bytes]]:
-    """Fetch DuckDuckGo image thumbnails and source URLs."""
-    q = (query or "").strip()
+def fetch_google_image_results(
+    query: str, *, limit: int = 10
+) -> list[tuple[str, bytes, str]]:
+    """Fetch (image_url, thumbnail_bytes, source_url) through DuckDuckGo image search."""
+    q = query.strip()
     if not q:
         return []
 
-    init_url = "https://duckduckgo.com/?" + urllib.parse.urlencode({"q": q, "ia": "images"})
+    init_url = "https://duckduckgo.com/?" + urllib.parse.urlencode(
+        {"q": q, "ia": "images"}
+    )
     init_req = urllib.request.Request(init_url, headers=BROWSER_HEADERS)
-    with urllib.request.urlopen(init_req, timeout=timeout_s) as resp:
+    with urllib.request.urlopen(init_req, timeout=_TIMEOUT_S) as resp:
         init_html = resp.read().decode("utf-8", errors="ignore")
 
     vqd = _ddg_vqd_from_html(init_html)
@@ -46,11 +50,9 @@ def _fetch_ddg_thumb_results(
             "f": "",
         }
     )
-    api_req = urllib.request.Request(
-        api_url, headers=ddg_api_headers(init_url)
-    )
+    api_req = urllib.request.Request(api_url, headers=ddg_api_headers(init_url))
 
-    with urllib.request.urlopen(api_req, timeout=timeout_s) as resp:
+    with urllib.request.urlopen(api_req, timeout=_TIMEOUT_S) as resp:
         data = resp.read().decode("utf-8", errors="ignore")
 
     try:
@@ -59,34 +61,35 @@ def _fetch_ddg_thumb_results(
         return []
 
     results = payload.get("results") or []
-    items: list[tuple[str, str]] = []
+    items: list[tuple[str, str, str]] = []
     for r in results:
         if not isinstance(r, dict):
             continue
-        full = r.get("image")
+        image_url = r.get("image")
         thumb = r.get("thumbnail") or r.get("image")
-        if isinstance(full, str) and full.startswith("http") and isinstance(thumb, str) and thumb.startswith("http"):
-            items.append((full, thumb))
+        source_url = r.get("url")
+        if not (
+            isinstance(image_url, str)
+            and image_url.startswith("http")
+            and isinstance(thumb, str)
+            and thumb.startswith("http")
+            and isinstance(source_url, str)
+            and source_url.startswith("http")
+        ):
+            continue
+        items.append((image_url, thumb, source_url))
         if len(items) >= limit:
             break
 
-    images: list[tuple[str, bytes]] = []
-    for full_url, thumb_url in items[:limit]:
+    images: list[tuple[str, bytes, str]] = []
+    for image_url, thumb_url, source_url in items[:limit]:
         try:
             img_req = urllib.request.Request(thumb_url, headers=BROWSER_HEADERS)
-            with urllib.request.urlopen(img_req, timeout=timeout_s) as img_resp:
+            with urllib.request.urlopen(img_req, timeout=_TIMEOUT_S) as img_resp:
                 b = img_resp.read()
             if b:
-                images.append((full_url, b))
+                images.append((image_url, b, source_url))
         except Exception:
             continue
 
     return images[:limit]
-
-
-def fetch_google_image_results(
-    query: str, *, limit: int = 10, timeout_s: float = 12.0
-) -> list[tuple[str, bytes]]:
-    """Fetch (source_url, thumbnail_bytes) results for a query (DDG only)."""
-    imgs = _fetch_ddg_thumb_results(query, limit=limit, timeout_s=timeout_s)
-    return imgs[:limit]

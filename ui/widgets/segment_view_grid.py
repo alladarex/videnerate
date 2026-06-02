@@ -22,6 +22,7 @@ from core.models.media import (
     VideoMedia,
 )
 from core.models.segment import Segment
+from core.models.word_timeline import WordTimeline, segment_playback_duration
 from ui.utils.grid_layout import column_count_for_viewport
 from ui.widgets.search_settings import search_settings_state
 from ui.cache.segment_search_cache import SegmentSearchCache
@@ -57,6 +58,7 @@ class SegmentViewGridController:
         cache: SegmentSearchCache,
         preview_cache: SegmentPreviewCache,
         on_media_selected,
+        word_timeline: WordTimeline,
     ) -> None:
         self._scroll = scroll
         self._grid_host = grid_host
@@ -65,6 +67,7 @@ class SegmentViewGridController:
         self._grid_spacing = int(grid_spacing)
         self._cache = cache
         self._on_media_selected = on_media_selected
+        self._word_timeline = word_timeline
 
         self._tiles: list[QWidget] = []
         self._result_tiles: list[QWidget] = []
@@ -159,7 +162,12 @@ class SegmentViewGridController:
                 b = bytes(item.thumb_bytes)
                 if media_type not in ALL_MEDIA or not url or not b:
                     raise ValueError(f"Invalid cached result: {item!r}")
-                tile = self._build_result_tile(media_type=media_type, url=url, thumb=b)
+                tile = self._build_result_tile(
+                    media_type=media_type,
+                    url=url,
+                    thumb=b,
+                    source=item.source,
+                )
                 self._tiles.append(tile)
                 self._result_tiles.append(tile)
                 restored += 1
@@ -175,7 +183,14 @@ class SegmentViewGridController:
         self.search_button.setEnabled(not busy)
         self.search_status.setText(status)
 
-    def _build_result_tile(self, *, media_type: str, url: str, thumb: bytes) -> QWidget:
+    def _build_result_tile(
+        self,
+        *,
+        media_type: str,
+        url: str,
+        thumb: bytes,
+        source: str | None = None,
+    ) -> QWidget:
         if media_type == VIDEO_MEDIA:
             tile = VideoTile(
                 size_px=self._tile_size_px,
@@ -185,8 +200,8 @@ class SegmentViewGridController:
             )
             tile.set_thumbnail_bytes(thumb)
             tile.clicked.connect(
-                lambda u=url, b=bytes(thumb): self._select_media(
-                    u, b, media_type=VIDEO_MEDIA
+                lambda u=url, b=bytes(thumb), s=source: self._select_media(
+                    u, b, media_type=VIDEO_MEDIA, source=s
                 )
             )
             return tile
@@ -194,8 +209,8 @@ class SegmentViewGridController:
             tile = ImageTile(size_px=self._tile_size_px, parent=self._grid_host)
             tile.set_thumbnail_bytes(thumb)
             tile.clicked.connect(
-                lambda u=url, b=bytes(thumb): self._select_media(
-                    u, b, media_type=IMAGE_MEDIA
+                lambda u=url, b=bytes(thumb), s=source: self._select_media(
+                    u, b, media_type=IMAGE_MEDIA, source=s
                 )
             )
             return tile
@@ -208,8 +223,8 @@ class SegmentViewGridController:
             )
             tile.set_thumbnail_bytes(thumb)
             tile.clicked.connect(
-                lambda u=url, b=bytes(thumb): self._select_media(
-                    u, b, media_type=GIF_MEDIA
+                lambda u=url, b=bytes(thumb), s=source: self._select_media(
+                    u, b, media_type=GIF_MEDIA, source=s
                 )
             )
             return tile
@@ -280,11 +295,16 @@ class SegmentViewGridController:
             self._search_worker = SearchWorker(self._grid_host)
             self._search_worker.results_ready.connect(self._on_search_results_ready)
 
+        min_video_duration_s = segment_playback_duration(
+            self._word_timeline, self._segment
+        )
+
         def run() -> None:
             merged = run_distributed_search(
                 query=query,
                 limit=limit,
                 source_distribution=source_distribution,
+                min_video_duration_s=min_video_duration_s,
             )
             self._search_worker.results_ready.emit(merged)
 
@@ -299,9 +319,12 @@ class SegmentViewGridController:
 
         added = 0
         self._thumb_by_url = {}
-        for media_type, url, data in results:
+        for media_type, url, data, source in results:
             tile = self._build_result_tile(
-                media_type=media_type, url=url, thumb=bytes(data)
+                media_type=media_type,
+                url=url,
+                thumb=bytes(data),
+                source=source,
             )
             self._tiles.append(tile)
             self._result_tiles.append(tile)
@@ -318,14 +341,19 @@ class SegmentViewGridController:
         self.rebuild_grid()
 
     def _select_media(
-        self, url: str, thumb_bytes: bytes, *, media_type: str = IMAGE_MEDIA
+        self,
+        url: str,
+        thumb_bytes: bytes,
+        *,
+        media_type: str = IMAGE_MEDIA,
+        source: str | None = None,
     ) -> None:
         if media_type == IMAGE_MEDIA:
-            self._segment.set_media(ImageMedia(url=url))
+            self._segment.set_media(ImageMedia(url=url, source=source))
         if media_type == VIDEO_MEDIA:
-            self._segment.set_media(VideoMedia(url=url))
+            self._segment.set_media(VideoMedia(url=url, source=source))
         if media_type == GIF_MEDIA:
-            self._segment.set_media(GifMedia(url=url))
+            self._segment.set_media(GifMedia(url=url, source=source))
         self._selected_url = url
         self._on_media_selected(self._segment.id, thumb_bytes)
         self._sync_media_preview(thumb_bytes=thumb_bytes)
@@ -339,4 +367,3 @@ class SegmentViewGridController:
             thumb_by_url=self._thumb_by_url,
             thumb_bytes=thumb_bytes,
         )
-
