@@ -159,7 +159,13 @@
     {
       "id": 13,
       "text": "because people connect more easily with stories and specific instances than with abstract reasoning.",
-      "media": null,
+      "media": {
+        "type": "video",
+        "file_path": "media/13_5d8e833d0cdcbf1e.mp4",
+        "url": null,
+        "start_timestamp": 0,
+        "source": "Pixabay"
+      },
       "word_start": 123,
       "word_end": 136
     },

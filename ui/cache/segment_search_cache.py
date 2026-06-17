@@ -1,9 +1,11 @@
 from dataclasses import dataclass
 
+from core.models.media import MediaType
+
 
 @dataclass
 class SegmentSearchResult:
-    type: str
+    media_type: MediaType
     url: str
     thumb_bytes: bytes
     source: str

@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
 
 from collections.abc import Callable
 
-from core.models.media import GIF_MEDIA, IMAGE_MEDIA, VIDEO_MEDIA
+from core.models.media import MediaType
 from ui.widgets.hover_media_preview import HoverMediaPreview
 from ui.cache.segment_preview_cache import SegmentPreviewCache
 from ui.styles.qss import MUTED_LABEL
@@ -106,7 +106,7 @@ class _HoverPlayableTile(_BaseResultTile):
         placeholder_text: str,
         media_url: str,
         preview_cache: SegmentPreviewCache,
-        media_type: str,
+        media_type: MediaType,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(
@@ -180,7 +180,7 @@ class VideoTile(_HoverPlayableTile):
             placeholder_text="Video failed",
             media_url=media_url,
             preview_cache=preview_cache,
-            media_type=VIDEO_MEDIA,
+            media_type=MediaType.VIDEO,
             parent=parent,
         )
 
@@ -203,14 +203,14 @@ class GifTile(_HoverPlayableTile):
             placeholder_text="GIF failed",
             media_url=media_url,
             preview_cache=preview_cache,
-            media_type=GIF_MEDIA,
+            media_type=MediaType.GIF,
             parent=parent,
         )
 
 
 def build_result_tile(
     *,
-    media_type: str,
+    media_type: MediaType,
     url: str,
     thumb: bytes,
     source: str | None,
@@ -220,7 +220,7 @@ def build_result_tile(
     on_select: Callable[..., None],
 ) -> QWidget:
     """Build one search result tile and wire click to on_select(url, thumb, media_type=..., source=...)."""
-    if media_type == VIDEO_MEDIA:
+    if media_type == MediaType.VIDEO:
         tile = VideoTile(
             size_px=size_px,
             media_url=url,
@@ -230,20 +230,20 @@ def build_result_tile(
         tile.set_thumbnail_bytes(thumb)
         tile.clicked.connect(
             lambda u=url, b=bytes(thumb), s=source: on_select(
-                u, b, media_type=VIDEO_MEDIA, source=s
+                u, b, media_type=MediaType.VIDEO, source=s
             )
         )
         return tile
-    if media_type == IMAGE_MEDIA:
+    if media_type == MediaType.IMAGE:
         tile = ImageTile(size_px=size_px, parent=parent)
         tile.set_thumbnail_bytes(thumb)
         tile.clicked.connect(
             lambda u=url, b=bytes(thumb), s=source: on_select(
-                u, b, media_type=IMAGE_MEDIA, source=s
+                u, b, media_type=MediaType.IMAGE, source=s
             )
         )
         return tile
-    if media_type == GIF_MEDIA:
+    if media_type == MediaType.GIF:
         tile = GifTile(
             size_px=size_px,
             media_url=url,
@@ -253,7 +253,7 @@ def build_result_tile(
         tile.set_thumbnail_bytes(thumb)
         tile.clicked.connect(
             lambda u=url, b=bytes(thumb), s=source: on_select(
-                u, b, media_type=GIF_MEDIA, source=s
+                u, b, media_type=MediaType.GIF, source=s
             )
         )
         return tile

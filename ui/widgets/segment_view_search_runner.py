@@ -1,7 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
-from core.models.media import GIF_MEDIA, IMAGE_MEDIA, VIDEO_MEDIA
+from core.models.media import MediaType
 from services.giphy_search import fetch_giphy_gif_results
 from services.ddg_search import fetch_google_image_results
 from services.pexels_search import fetch_pexels_image_results, fetch_pexels_video_results
@@ -19,12 +19,12 @@ def run_distributed_search(
     limit: int,
     source_distribution: dict[str, int],
     min_video_duration_s: float,
-) -> list[tuple[str, str, bytes, str]]:
+) -> list[tuple[MediaType, str, bytes, str]]:
     """Fetch from enabled sources and return merged (media_type, url, thumb_bytes, source)."""
-    merged: list[tuple[str, str, bytes, str]] = []
+    merged: list[tuple[MediaType, str, bytes, str]] = []
     seen_urls: set[str] = set()
 
-    def add_items(media_type: str, items: list[tuple[str, bytes, str]]) -> None:
+    def add_items(media_type: MediaType, items: list[tuple[str, bytes, str]]) -> None:
         for url, thumb, source in items:
             if url in seen_urls:
                 continue
@@ -42,13 +42,13 @@ def run_distributed_search(
             return []
 
     # (media_type, fetch) pairs run concurrently, then merge in list order
-    tasks: list[tuple[str, FetchFn]] = []
+    tasks: list[tuple[MediaType, FetchFn]] = []
 
     google_share = source_distribution.get("google", 0)
     if google_share > 0:
         tasks.append(
             (
-                IMAGE_MEDIA,
+                MediaType.IMAGE,
                 lambda: fetch_google_image_results(query, limit=google_share),
             )
         )
@@ -56,14 +56,14 @@ def run_distributed_search(
     giphy_share = source_distribution.get("giphy", 0)
     if giphy_share > 0:
         tasks.append(
-            (GIF_MEDIA, lambda: fetch_giphy_gif_results(query, limit=giphy_share))
+            (MediaType.GIF, lambda: fetch_giphy_gif_results(query, limit=giphy_share))
         )
 
     pexels_image_share = source_distribution.get("pexels_image", 0)
     if pexels_image_share > 0:
         tasks.append(
             (
-                IMAGE_MEDIA,
+                MediaType.IMAGE,
                 lambda: fetch_pexels_image_results(query, limit=pexels_image_share),
             )
         )
@@ -72,7 +72,7 @@ def run_distributed_search(
     if pexels_video_share > 0:
         tasks.append(
             (
-                VIDEO_MEDIA,
+                MediaType.VIDEO,
                 lambda: fetch_pexels_video_results(
                     query,
                     limit=pexels_video_share,
@@ -85,7 +85,7 @@ def run_distributed_search(
     if pixabay_image_share > 0:
         tasks.append(
             (
-                IMAGE_MEDIA,
+                MediaType.IMAGE,
                 lambda: fetch_pixabay_image_results(query, limit=pixabay_image_share),
             )
         )
@@ -94,7 +94,7 @@ def run_distributed_search(
     if pixabay_video_share > 0:
         tasks.append(
             (
-                VIDEO_MEDIA,
+                MediaType.VIDEO,
                 lambda: fetch_pixabay_video_results(
                     query,
                     limit=pixabay_video_share,

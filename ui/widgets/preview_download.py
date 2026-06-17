@@ -7,19 +7,23 @@ from typing import Callable
 
 from PySide6.QtCore import QObject, Signal
 
+from core.media_ext import resolve_media_ext
 from headers import BROWSER_HEADERS
+from ui.cache.segment_preview_cache import cached_file_for_base
 
 
-def _fetch_url_to_file(url: str, target_path: Path) -> bool:
+def _download_to_base(url: str, target_base: Path) -> tuple[Path, bool]:
+    """Download url and append the extension resolved from the response."""
     try:
-        if target_path.is_file():
-            return True
         req = urllib.request.Request(url, headers=BROWSER_HEADERS)
         with urllib.request.urlopen(req, timeout=20.0) as resp:
-            target_path.write_bytes(resp.read())
-        return True
+            data = resp.read()
+            ext = resolve_media_ext(url, resp.headers.get("Content-Type"))
+        dest = target_base.with_suffix(ext)
+        dest.write_bytes(data)
+        return dest, True
     except Exception:
-        return False
+        return target_base, False
 
 
 class UrlDownloadBroker(QObject):
@@ -47,9 +51,9 @@ class UrlDownloadBroker(QObject):
         callback: Callable[[str, bool], None],
     ) -> None:
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        path = str(target_path)
-        if target_path.is_file():
-            callback(path, True)
+        cached = cached_file_for_base(target_path)
+        if cached is not None:
+            callback(str(cached), True)
             return
 
         waiters = self._waiters.setdefault(url, [])
@@ -64,8 +68,8 @@ class UrlDownloadBroker(QObject):
         ).start()
 
     def _run_download(self, url: str, target_path: Path) -> None:
-        ok = _fetch_url_to_file(url, target_path)
-        self._completed.emit(url, str(target_path), ok)
+        path, ok = _download_to_base(url, target_path)
+        self._completed.emit(url, str(path), ok)
 
     def _notify_waiters(self, url: str, path: str, ok: bool) -> None:
         for callback in self._waiters.pop(url, []):

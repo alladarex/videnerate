@@ -1,3 +1,4 @@
+from core.models.media import MediaType
 from ui.cache.segment_search_cache import SegmentSearchResult
 
 
@@ -71,12 +72,12 @@ def build_source_distribution(
 
 
 def to_cached_results(
-    items: list[tuple[str, str, bytes, str]],
+    items: list[tuple[MediaType, str, bytes, str]],
 ) -> list[SegmentSearchResult]:
     """Convert normalized items to cache payload."""
     return [
         SegmentSearchResult(
-            type=media_type,
+            media_type=media_type,
             url=url,
             thumb_bytes=bytes(thumb_bytes),
             source=source,

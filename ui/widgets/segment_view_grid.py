@@ -9,15 +9,7 @@ This module owns the dynamic tile area inside segment detail view:
 from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QGridLayout, QLineEdit, QScrollArea, QWidget
 
-from core.models.media import (
-    ALL_MEDIA,
-    GIF_MEDIA,
-    IMAGE_MEDIA,
-    VIDEO_MEDIA,
-    GifMedia,
-    ImageMedia,
-    VideoMedia,
-)
+from core.models.media import MediaType, media_from_url
 from core.models.segment import Segment
 from core.models.word_timeline import WordTimeline
 from ui.utils.grid_layout import column_count_for_viewport
@@ -145,10 +137,10 @@ class SegmentViewGridController(QObject):
 
             restored = 0
             for item in cached.results:
-                media_type = item.type
+                media_type = item.media_type
                 url = item.url
                 b = bytes(item.thumb_bytes)
-                if media_type not in ALL_MEDIA or not url or not b:
+                if not url or not b:
                     raise ValueError(f"Invalid cached result: {item!r}")
                 tile = build_result_tile(
                     media_type=media_type,
@@ -224,15 +216,10 @@ class SegmentViewGridController(QObject):
         url: str,
         thumb_bytes: bytes,
         *,
-        media_type: str = IMAGE_MEDIA,
+        media_type: MediaType = MediaType.IMAGE,
         source: str | None = None,
     ) -> None:
-        if media_type == IMAGE_MEDIA:
-            self._segment.set_media(ImageMedia(url=url, source=source))
-        if media_type == VIDEO_MEDIA:
-            self._segment.set_media(VideoMedia(url=url, source=source))
-        if media_type == GIF_MEDIA:
-            self._segment.set_media(GifMedia(url=url, source=source))
+        self._segment.set_media(media_from_url(media_type, url=url, source=source))
         self._on_media_selected(self._segment.id, thumb_bytes)
         self._sync_media_tile(thumb_bytes)
 

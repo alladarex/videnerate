@@ -1,10 +1,12 @@
 from abc import ABC, abstractmethod
+from enum import StrEnum
 from typing import Any
 
-IMAGE_MEDIA = "image"
-VIDEO_MEDIA = "video"
-GIF_MEDIA = "gif"
-ALL_MEDIA = (IMAGE_MEDIA, VIDEO_MEDIA, GIF_MEDIA)
+
+class MediaType(StrEnum):
+    IMAGE = "image"
+    VIDEO = "video"
+    GIF = "gif"
 
 
 class Media(ABC):
@@ -21,12 +23,6 @@ class Media(ABC):
         # Validate that only one of file_path or url is provided
         if self.file_path and self.url:
             raise ValueError("Media can have either a file path or a URL, not both.")
-    
-    def validate_media(self, key: str, value: str) -> str:
-        """Validate media fields"""
-        if self.file_path and self.url:
-            raise ValueError("Media can have either a file path or a URL, not both.")
-        return value
 
     def set_file_path(self, path: str) -> None:
         """Persist media to a local file path (clears url)."""
@@ -37,9 +33,14 @@ class Media(ABC):
     def to_dict(self) -> dict[str, Any]:
         pass
 
+    @classmethod
+    @abstractmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Media":
+        pass
+
     @property
     @abstractmethod
-    def media_type(self) -> str:
+    def media_type(self) -> MediaType:
         pass
 
 
@@ -54,15 +55,23 @@ class ImageMedia(Media):
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "type": IMAGE_MEDIA,
+            "type": MediaType.IMAGE,
             "file_path": self.file_path,
             "url": self.url,
             "source": self.source,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ImageMedia":
+        return cls(
+            file_path=data.get("file_path"),
+            url=data.get("url"),
+            source=data.get("source"),
+        )
+
     @property
-    def media_type(self) -> str:
-        return IMAGE_MEDIA
+    def media_type(self) -> MediaType:
+        return MediaType.IMAGE
 
 
 class VideoMedia(Media):
@@ -85,16 +94,25 @@ class VideoMedia(Media):
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "type": VIDEO_MEDIA,
+            "type": MediaType.VIDEO,
             "file_path": self.file_path,
             "url": self.url,
             "start_timestamp": self.start_timestamp,
             "source": self.source,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "VideoMedia":
+        return cls(
+            file_path=data.get("file_path"),
+            url=data.get("url"),
+            start_timestamp=float(data.get("start_timestamp", 0)),
+            source=data.get("source"),
+        )
+
     @property
-    def media_type(self) -> str:
-        return VIDEO_MEDIA
+    def media_type(self) -> MediaType:
+        return MediaType.VIDEO
 
 
 class GifMedia(Media):
@@ -108,15 +126,30 @@ class GifMedia(Media):
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "type": GIF_MEDIA,
+            "type": MediaType.GIF,
             "file_path": self.file_path,
             "url": self.url,
             "source": self.source,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "GifMedia":
+        return cls(
+            file_path=data.get("file_path"),
+            url=data.get("url"),
+            source=data.get("source"),
+        )
+
     @property
-    def media_type(self) -> str:
-        return GIF_MEDIA
+    def media_type(self) -> MediaType:
+        return MediaType.GIF
+
+
+_MEDIA_CLASSES: dict[MediaType, type[Media]] = {
+    MediaType.IMAGE: ImageMedia,
+    MediaType.VIDEO: VideoMedia,
+    MediaType.GIF: GifMedia,
+}
 
 
 def media_from_dict(data: dict[str, Any]) -> Media:
@@ -124,25 +157,12 @@ def media_from_dict(data: dict[str, Any]) -> Media:
         raise TypeError(f"media_from_dict() expected dict, got {type(data).__name__!r}")
     if not data:
         raise ValueError("media payload is empty")
-    kind = data.get("type")
-    source = data.get("source")
-    if kind == IMAGE_MEDIA:
-        return ImageMedia(
-            file_path=data.get("file_path"),
-            url=data.get("url"),
-            source=source,
-        )
-    if kind == VIDEO_MEDIA:
-        return VideoMedia(
-            file_path=data.get("file_path"),
-            url=data.get("url"),
-            start_timestamp=float(data.get("start_timestamp", 0)),
-            source=source,
-        )
-    if kind == GIF_MEDIA:
-        return GifMedia(
-            file_path=data.get("file_path"),
-            url=data.get("url"),
-            source=source,
-        )
-    raise ValueError(f"Unknown media type: {kind!r}")
+    media_type = MediaType(data["type"])
+    return _MEDIA_CLASSES[media_type].from_dict(data)
+
+
+def media_from_url(
+    media_type: MediaType, *, url: str, source: str | None = None
+) -> Media:
+    """Construct a URL-backed Media of the given type (used at selection time)."""
+    return _MEDIA_CLASSES[MediaType(media_type)](url=url, source=source)

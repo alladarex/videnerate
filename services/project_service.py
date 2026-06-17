@@ -2,13 +2,13 @@ import json
 import re
 import hashlib
 import shutil
-import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 
+from core.media_ext import resolve_media_ext
 from core.models.project import Project
-from core.models.media import GifMedia, ImageMedia, Media, VideoMedia
+from core.models.media import Media
 from config import PROJECTS_DIR
 from headers import BROWSER_HEADERS
 from core.project_paths import ProjectPaths
@@ -159,20 +159,16 @@ def create_and_save_project(
     return project
 
 
-def _guess_ext_from_url(url: str, *, fallback: str) -> str:
-    path = urllib.parse.urlparse(url).path
-    ext = Path(path).suffix.lower()
-    if ext and 1 < len(ext) <= 6:
-        return ext
-    return fallback
-
-
-def _download_url_to_path(url: str, dest_path: Path, *, timeout_s: float = 20.0) -> None:
-    dest_path.parent.mkdir(parents=True, exist_ok=True)
+def _download_url_to_path(url: str, dest_base: Path, *, timeout_s: float = 20.0) -> Path:
+    """Download url to dest_base + resolved extension. Returns the final path."""
+    dest_base.parent.mkdir(parents=True, exist_ok=True)
     req = urllib.request.Request(url, headers=BROWSER_HEADERS)
     with urllib.request.urlopen(req, timeout=timeout_s) as resp:
         data = resp.read()
-    dest_path.write_bytes(data)
+        ext = resolve_media_ext(url, resp.headers.get("Content-Type"))
+    dest = dest_base.with_suffix(ext)
+    dest.write_bytes(data)
+    return dest
 
 
 def _ensure_media_persisted(paths: ProjectPaths, segment_id: int, media: Media) -> None:
@@ -184,13 +180,13 @@ def _ensure_media_persisted(paths: ProjectPaths, segment_id: int, media: Media) 
     media_dir = paths.media_dir
     media_dir.mkdir(parents=True, exist_ok=True)
 
-    # If already a file_path, ensure it's inside media/.
+    # If already a file_path, ensure it's inside media dir
     if media.file_path:
         src = paths.file(media.file_path)
         if src.is_file():
             try:
                 src.relative_to(media_dir.resolve())
-                # Already in media dir, keep as relative path for portability
+                # Already in media dir, normalize to a relative path
                 rel = _rel_path(paths, src)
                 media.set_file_path(rel)
                 return
@@ -216,12 +212,9 @@ def _ensure_media_persisted(paths: ProjectPaths, segment_id: int, media: Media) 
     # Otherwise, download from URL if present
     if media.url:
         url = media.url
-        fallback_ext = ".jpg" if isinstance(media, ImageMedia) else ".gif" if isinstance(media, GifMedia) else ".mp4"
-        ext = _guess_ext_from_url(url, fallback=fallback_ext)
-        name = f"{segment_id}_{hashlib.sha256(url.encode('utf-8')).hexdigest()[:16]}{ext}"
-        dest = media_dir / name
-        if not dest.exists():
-            _download_url_to_path(url, dest)
+        # Extension is added during download.
+        base_name = f"{segment_id}_{hashlib.sha256(url.encode('utf-8')).hexdigest()[:16]}"
+        dest = _download_url_to_path(url, media_dir / base_name)
         rel = _rel_path(paths, dest)
         media.set_file_path(rel)
         return

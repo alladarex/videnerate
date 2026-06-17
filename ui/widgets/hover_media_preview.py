@@ -7,8 +7,8 @@ from PySide6.QtGui import QEnterEvent, QMovie, QPixmap
 from PySide6.QtMultimedia import QVideoFrame
 from PySide6.QtWidgets import QLabel, QSizePolicy, QStackedLayout, QWidget
 
-from core.models.media import GIF_MEDIA, VIDEO_MEDIA, Media
-from ui.cache.segment_preview_cache import SegmentPreviewCache
+from core.models.media import Media, MediaType
+from ui.cache.segment_preview_cache import SegmentPreviewCache, cached_file_for_base
 from ui.utils.project_media_paths import project_media_path
 from ui.styles.qss import MUTED_LABEL, SMALL_MUTED_LABEL
 from ui.widgets.preview_download import UrlDownloadBroker
@@ -40,7 +40,7 @@ class HoverMediaPreview(QWidget):
         self._placeholder_text = placeholder_text
         self._cache = cache
 
-        self._media_type: str | None = None
+        self._media_type: MediaType | None = None
         self._media_url: str | None = None
         self._playback_path: str | None = None
         self._hovered = False
@@ -115,7 +115,7 @@ class HoverMediaPreview(QWidget):
     def bind_from_search_url(
         self,
         *,
-        media_type: str,
+        media_type: MediaType,
         media_url: str,
         thumbnail_bytes: bytes | None = None,
     ) -> None:
@@ -152,7 +152,7 @@ class HoverMediaPreview(QWidget):
 
     def on_hover_enter(self) -> None:
         self._hovered = True
-        if self._media_type in (VIDEO_MEDIA, GIF_MEDIA):
+        if self._media_type in (MediaType.VIDEO, MediaType.GIF):
             self._hover_timer.start()
 
     def on_hover_leave(self) -> None:
@@ -194,8 +194,9 @@ class HoverMediaPreview(QWidget):
             if path.is_file():
                 return str(path)
         if self._media_url:
-            ext = ".mp4" if self._media_type == VIDEO_MEDIA else ".gif"
-            return str(self._cache.cache_path_for_url(self._media_url, fallback_ext=ext))
+            cached = cached_file_for_base(self._cache.cache_base_for_url(self._media_url))
+            if cached is not None:
+                return str(cached)
         return None
 
     def _stop_preview(self) -> None:
@@ -220,19 +221,19 @@ class HoverMediaPreview(QWidget):
         self._loading_overlay.hide()
 
     def _on_hover_delay_elapsed(self) -> None:
-        if not self._hovered or self._media_type not in (VIDEO_MEDIA, GIF_MEDIA):
+        if not self._hovered or self._media_type not in (MediaType.VIDEO, MediaType.GIF):
             return
         path = self._playback_path
         if path and Path(path).is_file():
             self._start_preview(path)
             return
-        if not self._media_url or not path or self._download_started:
+        if not self._media_url or self._download_started:
             return
         self._show_loading_overlay()
         self._download_started = True
         UrlDownloadBroker.instance().request(
             url=self._media_url,
-            target_path=Path(path),
+            target_path=self._cache.cache_base_for_url(self._media_url),
             callback=self._on_download_finished,
         )
 
@@ -251,10 +252,10 @@ class HoverMediaPreview(QWidget):
             self._hide_loading_overlay()
 
     def _start_preview(self, path: str) -> None:
-        if self._media_type == VIDEO_MEDIA:
+        if self._media_type == MediaType.VIDEO:
             SharedVideoPreviewBackend.instance().play_for(self, path)
             return
-        if self._media_type == GIF_MEDIA:
+        if self._media_type == MediaType.GIF:
             if self._movie is not None:
                 self._movie.stop()
             self._movie = QMovie(path)
