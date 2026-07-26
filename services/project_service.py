@@ -6,16 +6,17 @@ import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 
+from core.json_io import save_json
 from core.media_ext import resolve_media_ext
 from core.models.project import Project
 from core.models.media import Media
 from config import PROJECTS_DIR
 from headers import BROWSER_HEADERS
 from core.project_paths import ProjectPaths
-from core.scripter import generate_segment_search_plan
 from core.word_tokenize import assert_segment_words_match_narration, normalize_text
 from services.alignment_service import align_project_audio
-from services.voiceover_service import write_project_voiceover
+from services.llm_service import generate_segment_search_plan
+from services.voiceover_service import generate_voiceover_mp3
 
 INVALID_FOLDER_CHARS = set('<>:"/\\|?*')
 
@@ -80,14 +81,6 @@ def _rel_path(paths: ProjectPaths, path: Path) -> str:
     return path.resolve().relative_to(paths.root.resolve()).as_posix()
 
 
-def create_project_from_segments(
-    segments: list[str],
-    title: str = "Untitled",
-) -> Project:
-    """Create a new in-memory Project from segment texts (no saving)."""
-    return Project(segments=segments, title=title)
-
-
 def _write_segments_analyzed_file(
     paths: ProjectPaths, segments: list[str], selected_model: str
 ) -> None:
@@ -139,18 +132,14 @@ def create_and_save_project(
     paths.narration_txt.write_text(narration, encoding="utf-8")
 
     status("Generating voiceover...")
-    write_project_voiceover(narration, paths)
-    project = create_project_from_segments(segments, title=dir_name)
+    generate_voiceover_mp3(narration, paths.voiceover_mp3)
+    project = Project(segments=segments, title=dir_name)
 
     status("Aligning audio to narration...")
     align_project_audio(paths, project)
 
     status("Saving project...")
-    payload = project.to_dict()
-    paths.project_json.write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    save_json(paths.project_json, project.to_dict())
 
     if auto_assign:
         status("Analyzing segments...")
@@ -283,9 +272,6 @@ def save_project(project: Project) -> Path:
             # Don't block saving the rest of the project on a single media failure
             continue
 
-    paths.project_json.write_text(
-        json.dumps(project.to_dict(), indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    save_json(paths.project_json, project.to_dict())
     _cleanup_unused_project_media(paths, project)
     return paths.root

@@ -16,6 +16,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from services.llm_service import (
+    DEFAULT_NARRATION_MODEL,
+    DEFAULT_SEGMENTATION_MODEL,
+    SUPPORTED_MODELS,
+)
+
 
 class StartHomeView(QWidget):
     enter_video_idea_clicked = Signal()
@@ -105,10 +111,8 @@ class VideoIdeaView(QWidget):
         generate_row_layout.setContentsMargins(0, 0, 0, 0)
         generate_row_layout.addWidget(self.generate_button)
         generate_row_layout.addStretch()
-        self.model_selector.addItems(
-            ["deepseek-chat", "deepseek-reasoner", "gpt-4o-mini"]
-        )
-        self.model_selector.setCurrentText("deepseek-chat")
+        self.model_selector.addItems(SUPPORTED_MODELS)
+        self.model_selector.setCurrentText(DEFAULT_NARRATION_MODEL)
         generate_row_layout.addWidget(self.model_selector)
 
         loading_row = QWidget(self)
@@ -178,10 +182,8 @@ class NarrationEditorView(QWidget):
         create_project_row_layout.addWidget(self.create_project_button)
         create_project_row_layout.addWidget(self.auto_assign_checkbox)
         create_project_row_layout.addStretch()
-        self.model_selector.addItems(
-            ["deepseek-chat", "deepseek-reasoner", "gpt-4o-mini"]
-        )
-        self.model_selector.setCurrentText("deepseek-reasoner")
+        self.model_selector.addItems(SUPPORTED_MODELS)
+        self.model_selector.setCurrentText(DEFAULT_SEGMENTATION_MODEL)
         create_project_row_layout.addWidget(self.model_selector)
 
         loading_row = QWidget(self)

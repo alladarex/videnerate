@@ -14,9 +14,8 @@ from PySide6.QtWidgets import (
 
 from core.models.project import Project
 from core.models.segment import Segment
-from core.models.word_timeline import segment_playback_bounds
+from core.models.word_timeline import load_word_timeline, segment_playback_bounds
 from core.project_paths import ProjectPaths
-from services.alignment_service import load_word_timeline
 from services.project_service import save_project
 from ui.styles.qss import (
     ACTION_BUTTON,

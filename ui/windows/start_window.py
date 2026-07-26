@@ -2,10 +2,7 @@ from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
 from PySide6.QtWidgets import QMainWindow, QMessageBox, QStackedWidget
 
 from core.models.project import Project
-from services.narration_service import (
-    generate_narration_from_video_idea,
-    get_segments_from_narration,
-)
+from services.llm_service import generate_narration, generate_segments
 from services.project_service import (
     create_and_save_project,
     get_next_project_title,
@@ -34,7 +31,7 @@ class NarrationGenerationWorker(QObject):
     @Slot()
     def run(self) -> None:
         try:
-            narration = generate_narration_from_video_idea(
+            narration = generate_narration(
                 self._video_idea, selected_model=self._selected_model
             )
         except Exception as exc:
@@ -65,7 +62,7 @@ class ProjectCreationWorker(QObject):
     def run(self) -> None:
         try:
             self.status.emit("Segmenting narration...")
-            segments = get_segments_from_narration(
+            segments = generate_segments(
                 self._narration, selected_model=self._selected_model
             )
             project = create_and_save_project(

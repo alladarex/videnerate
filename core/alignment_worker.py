@@ -4,8 +4,8 @@ import sys
 from pathlib import Path
 
 from core.audio_alignment import build_word_timeline
+from core.models.word_timeline import save_word_timeline
 from core.project_paths import ProjectPaths
-from services.alignment_service import save_word_timeline
 
 
 def main(project_root: Path) -> int:

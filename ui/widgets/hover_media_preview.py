@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QSize, QTimer, Qt
@@ -9,7 +7,6 @@ from PySide6.QtWidgets import QLabel, QSizePolicy, QStackedLayout, QWidget
 
 from core.models.media import Media, MediaType
 from ui.cache.segment_preview_cache import SegmentPreviewCache, cached_file_for_base
-from ui.utils.project_media_paths import project_media_path
 from ui.styles.qss import MUTED_LABEL, SMALL_MUTED_LABEL
 from ui.widgets.preview_download import UrlDownloadBroker
 from ui.widgets.preview_playback import SharedVideoPreviewBackend
@@ -188,9 +185,7 @@ class HoverMediaPreview(QWidget):
 
     def _resolve_playback_path(self, *, media_file_path: str | None = None) -> str | None:
         if media_file_path:
-            path = project_media_path(
-                rel_path=media_file_path, preview_cache=self._cache
-            )
+            path = self._cache.paths.file(media_file_path)
             if path.is_file():
                 return str(path)
         if self._media_url:

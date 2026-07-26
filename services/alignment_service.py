@@ -1,33 +1,15 @@
-import json
 import subprocess
 import sys
 
 from core.alignment_report import write_alignment_report
 from core.audio_alignment import assign_segment_word_ranges
 from core.models.project import Project
-from core.models.word_timeline import WordTimeline
+from core.models.word_timeline import WordTimeline, load_word_timeline
 from config import APP_DIR
 from core.project_paths import ProjectPaths
 from core.word_tokenize import tokenize_words
 
 _ALIGN_TIMEOUT_S = 180
-
-
-def load_word_timeline(paths: ProjectPaths) -> WordTimeline:
-    path = paths.word_timeline_json
-    if not path.is_file():
-        raise FileNotFoundError(f"Word timeline file not found: {path}")
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return WordTimeline.from_dict(data)
-
-
-def save_word_timeline(paths: ProjectPaths, timeline: WordTimeline) -> None:
-    path = paths.word_timeline_json
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(timeline.to_dict(), indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
 
 
 def _run_whisper_alignment_subprocess(paths: ProjectPaths) -> None:

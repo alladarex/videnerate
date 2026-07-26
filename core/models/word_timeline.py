@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+
+from core.json_io import save_json
+from core.project_paths import ProjectPaths
 
 if TYPE_CHECKING:
     from .segment import Segment
@@ -56,6 +60,17 @@ class WordTimeline:
             audio_duration=float(data["audio_duration"]),
             words=[WordSpan.from_dict(w) for w in data["words"]],
         )
+
+
+def load_word_timeline(paths: ProjectPaths) -> WordTimeline:
+    path = paths.word_timeline_json
+    if not path.is_file():
+        raise FileNotFoundError(f"Word timeline file not found: {path}")
+    return WordTimeline.from_dict(json.loads(path.read_text(encoding="utf-8")))
+
+
+def save_word_timeline(paths: ProjectPaths, timeline: WordTimeline) -> None:
+    save_json(paths.word_timeline_json, timeline.to_dict())
 
 
 def segment_playback_bounds(timeline: WordTimeline, segment: Segment) -> tuple[float, float]:
