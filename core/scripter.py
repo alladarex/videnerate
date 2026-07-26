@@ -25,10 +25,6 @@ def _resolve_provider(selected_model: str) -> tuple[OpenAI, str]:
 
     raise ValueError(f"Unsupported model '{selected_model}'.")
 
-def calculate_word_range(duration_range, words_per_minute=150):
-    """Returns the estimated word range given a duration range (in seconds)."""
-    wps = words_per_minute / 60.0
-    return (int(round(duration_range[0] * wps)), int(round(duration_range[1] * wps)))
 
 def generate_narration(
     input_phrase,
@@ -52,11 +48,9 @@ def generate_narration(
         max_tokens=max_tokens,
     )
     return response.choices[0].message.content.strip()
-    #return "Hyperliquid is a cutting-edge conceptthat reimagines the nature of liquidityin financial markets and beyond. At its core, hyperliquid representsan ultra-fluid state where assetscan be rapidly converted into cashor other assets with minimal friction and cost. This idea has gained tractionwith the rise of digital currenciesand blockchain technology,which facilitate swift and efficient transactions. An interesting aspect of hyperliquidis its potential to revolutionize traditional financial systemsby enhancing market efficiency and accessibility. By enabling seamless asset transfers,it promises to break down barriersthat have long hindered economic participationfor individuals and businesses alike. In essence, hyperliquid offers a glimpseinto a future where financial marketsare more dynamic and responsive to global trends. This concept also underscoresthe transformative power of technologyin reshaping how we perceive and interact with value. As hyperliquid continues to evolve,it holds the promise of creating more inclusive and agile economic systems worldwide."
 
 def segment_narration(
         narration,
-        merge_last=False,
         model=None,
         selected_model: str = "deepseek-reasoner",
         max_tokens=5000,
@@ -82,10 +76,6 @@ def segment_narration(
     segments = re.sub(r'\n\s*\n', '\n', segments)
     if len(segments) == 0:
         raise ValueError("No segments returned")
-    
-    if merge_last:
-        last_newline = segments.rfind('\n')
-        segments = segments[:last_newline] + " " + segments[last_newline+1:]
 
     return segments
 

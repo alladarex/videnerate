@@ -19,17 +19,6 @@ class Project:
         segment_list = [Segment(text=text, id=i) for i, text in enumerate(segments)]
         self.segments: List[Segment] = segment_list
 
-    def add_segment(self, text: str) -> None:
-        """Add a new segment to the project"""
-        position = len(self.segments)
-        segment = Segment(text=text, id=position)
-        self.segments.append(segment)
-
-    def set_title(self, title: str, max_length: int = 100) -> None:
-        """Set the project title, trimming to max_length if necessary"""
-        if title and title.strip():
-            self.title = title.strip()[:max_length]
-
     def to_dict(self) -> dict[str, Any]:
         return {
             "title": self.title,
