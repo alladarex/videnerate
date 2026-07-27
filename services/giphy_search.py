@@ -1,30 +1,10 @@
-import json
 import urllib.parse
-import urllib.request
 
 from config import GIPHY_API_KEY
 from headers import VIDENERATE_HEADERS
+from services.search_common import fetch_bytes, fetch_json, is_valid_http_url
 
-_TIMEOUT_S = 12.0
 SOURCE = "Giphy"
-
-
-def _fetch_json(url: str) -> dict:
-    req = urllib.request.Request(url, headers=VIDENERATE_HEADERS)
-    with urllib.request.urlopen(req, timeout=_TIMEOUT_S) as resp:
-        payload = resp.read().decode("utf-8", errors="ignore")
-    return json.loads(payload)
-
-
-def _fetch_bytes(url: str) -> bytes | None:
-    try:
-        req = urllib.request.Request(url, headers=VIDENERATE_HEADERS)
-        with urllib.request.urlopen(req, timeout=_TIMEOUT_S) as resp:
-            data = resp.read()
-        return data or None
-    except Exception as e:
-        print(f"[giphy] _fetch_bytes failed for {url}: {e}")
-        return None
 
 
 def _pick_url(images: dict, *names: str) -> str | None:
@@ -33,7 +13,7 @@ def _pick_url(images: dict, *names: str) -> str | None:
         if not isinstance(item, dict):
             continue
         url = item.get("url")
-        if isinstance(url, str) and url.startswith("http"):
+        if is_valid_http_url(url):
             return url
     return None
 
@@ -41,7 +21,7 @@ def _pick_url(images: dict, *names: str) -> str | None:
 def fetch_giphy_gif_results(
     query: str, *, limit: int = 10
 ) -> list[tuple[str, bytes, str]]:
-    """Fetch (gif_url, thumbnail_bytes, source) through Giphy search."""
+    """Fetch (gif_url, thumb_bytes, source) through Giphy search."""
     if not GIPHY_API_KEY:
         return []
     q = query.strip()
@@ -58,7 +38,7 @@ def fetch_giphy_gif_results(
         }
     )
     try:
-        payload = _fetch_json(url)
+        payload = fetch_json(url, headers=VIDENERATE_HEADERS)
     except Exception as e:
         print(f"[{SOURCE}] fetch_giphy_gif_results failed for query '{q}': {e}")
         return []
@@ -83,9 +63,9 @@ def fetch_giphy_gif_results(
         if not gif_url or not thumb_url:
             continue
 
-        thumb = _fetch_bytes(thumb_url)
-        if thumb:
-            out.append((gif_url, thumb, SOURCE))
+        thumb_bytes = fetch_bytes(thumb_url, headers=VIDENERATE_HEADERS, source=SOURCE)
+        if thumb_bytes:
+            out.append((gif_url, thumb_bytes, SOURCE))
         if len(out) >= limit:
             break
 

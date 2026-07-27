@@ -3,7 +3,7 @@ from typing import Callable
 
 from core.models.media import MediaType
 from services.giphy_search import fetch_giphy_gif_results
-from services.ddg_search import fetch_google_image_results
+from services.ddg_search import fetch_web_image_results
 from services.pexels_search import fetch_pexels_image_results, fetch_pexels_video_results
 from services.pixabay_search import fetch_pixabay_image_results, fetch_pixabay_video_results
 
@@ -49,7 +49,7 @@ def run_distributed_search(
         tasks.append(
             (
                 MediaType.IMAGE,
-                lambda: fetch_google_image_results(query, limit=google_share),
+                lambda: fetch_web_image_results(query, limit=google_share),
             )
         )
 
