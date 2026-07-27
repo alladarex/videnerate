@@ -71,6 +71,33 @@ def _fit(clip: VideoClip, width: int, height: int) -> VideoClip:
     return clip.resized(scale).with_position("center")
 
 
+def _silent_video_clip(file_path: str) -> VideoClip:
+    """Open a video file with its audio track released.
+
+    Exports use the project voiceover only, and 'without_audio()' returns a copy whose
+    'audio' is None - which orphans the source audio reader unless it is closed here.
+    """
+    clip = VideoFileClip(file_path)
+    if clip.audio is not None:
+        clip.audio.close()
+    return clip.without_audio()
+
+
+def _close_clip(clip: VideoClip) -> None:
+    """Close a clip and anything composited inside it.
+
+    'CompositeVideoClip.close()' releases only its own background and audio, never the
+    clips it composites, so a nested VideoFileClip keeps its ffmpeg subprocess alive
+    until interpreter shutdown - where '__del__' then fails on an invalid handle.
+    """
+    for child in getattr(clip, "clips", None) or []:
+        _close_clip(child)
+    try:
+        clip.close()
+    except Exception:
+        pass
+
+
 _SOURCE_OVERLAY_MARGIN_PX = 12
 _SOURCE_OVERLAY_FONT_SIZE = 34
 _SOURCE_OVERLAY_TEXT_MARGIN = (4, 4, 2, 6)  # L, R, T, B — room for descenders + stroke
@@ -130,12 +157,12 @@ def _build_segment_clip(
     if isinstance(media, ImageMedia):
         clip = ImageClip(file_path).with_duration(duration)
     elif isinstance(media, VideoMedia):
-        clip = VideoFileClip(file_path).without_audio()
+        clip = _silent_video_clip(file_path)
         if media.start_timestamp and media.start_timestamp > 0:
             clip = clip.subclipped(media.start_timestamp)
         clip = clip.with_effects([Loop(duration=duration)])
     elif isinstance(media, GifMedia):
-        clip = VideoFileClip(file_path).without_audio()
+        clip = _silent_video_clip(file_path)
         clip = clip.with_effects([Loop(duration=duration)])
     else:
         raise ValueError(
@@ -181,68 +208,72 @@ def export_project(
     if total == 0:
         raise ValueError("Project has no segments to export.")
 
+    output_path = paths.export_mp4
+    tmp_path = paths.export_tmp_mp4
+    tmp_audio_path = paths.export_audio_m4a
+
     clips: list[VideoClip] = []
     built = 0
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", UserWarning)
-        for seg in project.segments:
-            if cancel_event is not None and cancel_event.is_set():
-                raise ExportCancelled()
-            start, end = segment_playback_bounds(timeline, seg)
-            duration = max(end - start, 0.0)
-            clip = _build_segment_clip(
-                seg, paths=paths, duration=duration, settings=settings
-            ).with_start(start)
-            clips.append(clip)
-            built += 1
-            pct = int(built * 100 / total)
-            report(1, pct, f"Preparing segments ({built}/{total})...")
+    audio: AudioFileClip | None = None
+    composite: VideoClip | None = None
+    # Cancelling during phase 1 also has to release every clip built so far,
+    # so clip cleanup wraps both phases rather than just the encode.
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            for seg in project.segments:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise ExportCancelled()
+                start, end = segment_playback_bounds(timeline, seg)
+                duration = max(end - start, 0.0)
+                clip = _build_segment_clip(
+                    seg, paths=paths, duration=duration, settings=settings
+                ).with_start(start)
+                clips.append(clip)
+                built += 1
+                pct = int(built * 100 / total)
+                report(1, pct, f"Preparing segments ({built}/{total})...")
 
-        audio = AudioFileClip(str(paths.voiceover_mp3))
-        composite = CompositeVideoClip(clips, size=(settings.width, settings.height))
-        composite = composite.with_audio(audio).with_duration(timeline.audio_duration)
+            audio = AudioFileClip(str(paths.voiceover_mp3))
+            composite = CompositeVideoClip(clips, size=(settings.width, settings.height))
+            composite = composite.with_audio(audio).with_duration(timeline.audio_duration)
 
-        output_path = paths.export_mp4
-        tmp_path = paths.export_tmp_mp4
-        tmp_audio_path = paths.export_audio_m4a
-
-        # Phase 2: encoding
-        report(2, 0, "Encoding video...")
-        encode_logger = _EncodeProgressLogger(
-            report,
-            message="Encoding video...",
-            cancel_event=cancel_event,
-        )
-        try:
-            composite.write_videofile(
-                str(tmp_path),
-                fps=settings.fps,
-                codec=settings.codec,
-                audio_codec=settings.audio_codec,
-                logger=encode_logger,
-                temp_audiofile=str(tmp_audio_path),
-                remove_temp=True,
+            # Phase 2: encoding
+            report(2, 0, "Encoding video...")
+            encode_logger = _EncodeProgressLogger(
+                report,
+                message="Encoding video...",
+                cancel_event=cancel_event,
             )
-            if output_path.exists():
-                output_path.unlink()
-            tmp_path.replace(output_path)
-            report(2, 100, "Encoding video...")
+            try:
+                composite.write_videofile(
+                    str(tmp_path),
+                    fps=settings.fps,
+                    codec=settings.codec,
+                    audio_codec=settings.audio_codec,
+                    logger=encode_logger,
+                    temp_audiofile=str(tmp_audio_path),
+                    remove_temp=True,
+                )
+                if output_path.exists():
+                    output_path.unlink()
+                tmp_path.replace(output_path)
+                report(2, 100, "Encoding video...")
 
-        # Cleanup
-        except Exception:
-            if tmp_path.is_file():
-                tmp_path.unlink()
-            if tmp_audio_path.is_file():
-                tmp_audio_path.unlink()
-            raise
-        finally:
+            # Delete the partial export.tmp.mp4 if export fails
+            except Exception:
+                if tmp_path.is_file():
+                    tmp_path.unlink()
+                raise
+    finally:
+        # Clean up
+        # The None checks are for a phase-1 cancel, which raises before these are assigned.
+        if composite is not None:
             composite.close()
+        if audio is not None:
             audio.close()
-            if tmp_audio_path.is_file():
-                tmp_audio_path.unlink()
-            for c in clips:
-                try:
-                    c.close()
-                except Exception:
-                    continue
+        for clip in clips:
+            _close_clip(clip)
+        if tmp_audio_path.is_file():
+            tmp_audio_path.unlink()
     return output_path
