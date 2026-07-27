@@ -11,44 +11,38 @@ from PySide6.QtWidgets import (
     QWidgetAction,
 )
 
+from services.media_search import SEARCH_PROVIDERS, group_label, search_groups
+
+# Switched back on when the user unchecks the last remaining source.
+_FALLBACK_KEY = "web"
+
 
 @dataclass
 class SearchSettingsState:
     """Persisted across segment switches and segment view rebuilds."""
 
-    google: bool = True
-    giphy: bool = False
-    pexels_video: bool = True
-    pexels_image: bool = True
-    pixabay_video: bool = True
-    pixabay_image: bool = True
+    enabled: set[str]
     limit: int = 16
 
 
-_state = SearchSettingsState()
+# Sources checked the first time the menu opens (everything except Giphy)
+_state = SearchSettingsState(
+    enabled={"web", "pexels_video", "pexels_image", "pixabay_video", "pixabay_image"}
+)
 
 
 def search_settings_state() -> SearchSettingsState:
     return _state
 
 
-def _providers_active(state: SearchSettingsState) -> bool:
-    """True if at least one search provider is enabled (Pexels/Pixabay count if either Video or Image)."""
-    return bool(
-        state.google
-        or state.giphy
-        or (state.pexels_video or state.pexels_image)
-        or (state.pixabay_video or state.pixabay_image)
-    )
-
-
-def _ensure_at_least_one_provider(*, state: SearchSettingsState, google_act: QAction) -> None:
-    if _providers_active(state):
+def _ensure_at_least_one_source(actions: dict[str, QAction]) -> None:
+    if _state.enabled:
         return
-    google_act.blockSignals(True)
-    google_act.setChecked(True)
-    google_act.blockSignals(False)
-    state.google = True
+    action = actions[_FALLBACK_KEY]
+    action.blockSignals(True)
+    action.setChecked(True)
+    action.blockSignals(False)
+    _state.enabled = {_FALLBACK_KEY}
 
 
 class _SearchSettingsMenu(QMenu):
@@ -64,10 +58,10 @@ class _SearchSettingsMenu(QMenu):
         super().mouseReleaseEvent(event)
 
 
-def _add_checkable(menu: QMenu, text: str) -> QAction:
+def _add_checkable(menu: QMenu, *, text: str, checked: bool) -> QAction:
     act = QAction(text, menu)
     act.setCheckable(True)
-    act.setChecked(True)
+    act.setChecked(checked)
     menu.addAction(act)
     return act
 
@@ -83,7 +77,7 @@ def _add_limit_row(menu: QMenu) -> QSpinBox:
 
     spin = QSpinBox(row)
     spin.setRange(4, 30)
-    spin.setValue(16)
+    spin.setValue(_state.limit)
     spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
     spin.setFixedWidth(44)
     spin.setAlignment(Qt.AlignmentFlag.AlignRight)
@@ -95,8 +89,8 @@ def _add_limit_row(menu: QMenu) -> QSpinBox:
     return spin
 
 
-def _wire_parent_submenu_sync(parent: QAction, video: QAction, image: QAction) -> None:
-    """Parent toggles both children; children OR-gate the parent."""
+def _wire_parent_submenu_sync(parent: QAction, children: list[QAction]) -> None:
+    """Parent toggles every child, children OR-gate the parent."""
 
     syncing = False
 
@@ -106,8 +100,8 @@ def _wire_parent_submenu_sync(parent: QAction, video: QAction, image: QAction) -
             return
         syncing = True
         try:
-            video.setChecked(checked)
-            image.setChecked(checked)
+            for child in children:
+                child.setChecked(checked)
         finally:
             syncing = False
 
@@ -117,113 +111,62 @@ def _wire_parent_submenu_sync(parent: QAction, video: QAction, image: QAction) -
             return
         syncing = True
         try:
-            parent.setChecked(video.isChecked() or image.isChecked())
+            parent.setChecked(any(child.isChecked() for child in children))
         finally:
             syncing = False
 
     parent.toggled.connect(on_parent)
-    video.toggled.connect(on_child)
-    image.toggled.connect(on_child)
+    for child in children:
+        child.toggled.connect(on_child)
 
 
-def _apply_persisted_state(
-    *,
-    google_act: QAction,
-    giphy_act: QAction,
-    pexels_video: QAction,
-    pexels_image: QAction,
-    pixabay_video: QAction,
-    pixabay_image: QAction,
-    limit_spin: QSpinBox,
-) -> None:
-    s = _state
-    google_act.setChecked(s.google)
-    giphy_act.setChecked(s.giphy)
-    pexels_video.setChecked(s.pexels_video)
-    pexels_image.setChecked(s.pexels_image)
-    pixabay_video.setChecked(s.pixabay_video)
-    pixabay_image.setChecked(s.pixabay_image)
-    limit_spin.setValue(s.limit)
+def _add_group_row(menu: QMenu, *, group: str, keys: list[str]) -> dict[str, QAction]:
+    """Add one top-level row and return the action per provider key it created.
 
-    _ensure_at_least_one_provider(state=s, google_act=google_act)
+    A group holding a single source is one checkable row, a group holding several is a
+    checkable row with a submenu, where the row acts as a switch for all of them.
+    """
+    if len(keys) == 1:
+        key = keys[0]
+        action = _add_checkable(
+            menu, text=group_label(group), checked=key in _state.enabled
+        )
+        return {key: action}
 
+    submenu = _SearchSettingsMenu(menu)
+    children = {
+        key: _add_checkable(
+            submenu, text=SEARCH_PROVIDERS[key].label, checked=key in _state.enabled
+        )
+        for key in keys
+    }
 
-def _connect_state_persistence(
-    *,
-    google_act: QAction,
-    giphy_act: QAction,
-    pexels_video: QAction,
-    pexels_image: QAction,
-    pixabay_video: QAction,
-    pixabay_image: QAction,
-    limit_spin: QSpinBox,
-) -> None:
-    def sync_from_actions() -> None:
-        _state.google = google_act.isChecked()
-        _state.giphy = giphy_act.isChecked()
-        _state.pexels_video = pexels_video.isChecked()
-        _state.pexels_image = pexels_image.isChecked()
-        _state.pixabay_video = pixabay_video.isChecked()
-        _state.pixabay_image = pixabay_image.isChecked()
-
-        _ensure_at_least_one_provider(state=_state, google_act=google_act)
-
-    google_act.toggled.connect(lambda _: sync_from_actions())
-    giphy_act.toggled.connect(lambda _: sync_from_actions())
-    pexels_video.toggled.connect(lambda _: sync_from_actions())
-    pexels_image.toggled.connect(lambda _: sync_from_actions())
-    pixabay_video.toggled.connect(lambda _: sync_from_actions())
-    pixabay_image.toggled.connect(lambda _: sync_from_actions())
-    limit_spin.valueChanged.connect(lambda v: setattr(_state, "limit", int(v)))
+    group_action = QAction(group_label(group), menu)
+    group_action.setCheckable(True)
+    group_action.setChecked(any(key in _state.enabled for key in keys))
+    group_action.setMenu(submenu)
+    menu.addAction(group_action)
+    _wire_parent_submenu_sync(group_action, list(children.values()))
+    return children
 
 
 def build_search_settings_menu(parent: QWidget) -> QMenu:
     menu = _SearchSettingsMenu(parent)
 
-    google_act = _add_checkable(menu, "Google")
-    giphy_act = _add_checkable(menu, "Giphy")
-
-    pexels = _SearchSettingsMenu(menu)
-    pexels_video = _add_checkable(pexels, "Video")
-    pexels_image = _add_checkable(pexels, "Image")
-    pexels_act = QAction("Pexels", menu)
-    pexels_act.setCheckable(True)
-    pexels_act.setChecked(True)
-    pexels_act.setMenu(pexels)
-    menu.addAction(pexels_act)
-    _wire_parent_submenu_sync(pexels_act, pexels_video, pexels_image)
-
-    pixabay = _SearchSettingsMenu(menu)
-    pixabay_video = _add_checkable(pixabay, "Video")
-    pixabay_image = _add_checkable(pixabay, "Image")
-    pixabay_act = QAction("Pixabay", menu)
-    pixabay_act.setCheckable(True)
-    pixabay_act.setChecked(True)
-    pixabay_act.setMenu(pixabay)
-    menu.addAction(pixabay_act)
-    _wire_parent_submenu_sync(pixabay_act, pixabay_video, pixabay_image)
+    actions: dict[str, QAction] = {}
+    for group, keys in search_groups().items():
+        actions.update(_add_group_row(menu, group=group, keys=keys))
 
     menu.addSeparator()
     limit_spin = _add_limit_row(menu)
-    menu.limit_spin = limit_spin
 
-    _apply_persisted_state(
-        google_act=google_act,
-        giphy_act=giphy_act,
-        pexels_video=pexels_video,
-        pexels_image=pexels_image,
-        pixabay_video=pixabay_video,
-        pixabay_image=pixabay_image,
-        limit_spin=limit_spin,
-    )
-    _connect_state_persistence(
-        google_act=google_act,
-        giphy_act=giphy_act,
-        pexels_video=pexels_video,
-        pexels_image=pexels_image,
-        pixabay_video=pixabay_video,
-        pixabay_image=pixabay_image,
-        limit_spin=limit_spin,
-    )
+    def sync_from_actions() -> None:
+        _state.enabled = {key for key, act in actions.items() if act.isChecked()}
+        _ensure_at_least_one_source(actions)
 
+    for action in actions.values():
+        action.toggled.connect(lambda _: sync_from_actions())
+    limit_spin.valueChanged.connect(lambda value: setattr(_state, "limit", int(value)))
+
+    _ensure_at_least_one_source(actions)
     return menu

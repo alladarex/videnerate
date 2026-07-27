@@ -1,14 +1,6 @@
 from dataclasses import dataclass
 
-from core.models.media import MediaType
-
-
-@dataclass
-class SegmentSearchResult:
-    media_type: MediaType
-    url: str
-    thumb_bytes: bytes
-    source: str
+from services.search_common import SearchResult
 
 
 @dataclass
@@ -16,7 +8,7 @@ class SegmentSearchState:
     """Cached search query and fetched thumbnail data for one segment."""
 
     query: str
-    results: list[SegmentSearchResult]
+    results: list[SearchResult]
 
 
 class SegmentSearchCache:
@@ -29,7 +21,7 @@ class SegmentSearchCache:
         return self._by_segment_id.get(segment_id)
 
     def set(
-        self, segment_id: int, *, query: str, results: list[SegmentSearchResult]
+        self, segment_id: int, *, query: str, results: list[SearchResult]
     ) -> None:
         self._by_segment_id[segment_id] = SegmentSearchState(
             query=query,
@@ -41,7 +33,7 @@ class SegmentSearchCache:
         state = self.get(segment_id)
         if state is None:
             return None
-        for item in state.results:
-            if item.url == url:
-                return bytes(item.thumb_bytes)
+        for result in state.results:
+            if result.url == url:
+                return bytes(result.thumb_bytes)
         return None

@@ -9,9 +9,10 @@ This module owns the dynamic tile area inside segment detail view:
 from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QGridLayout, QLineEdit, QScrollArea, QWidget
 
-from core.models.media import MediaType, media_from_url
+from core.models.media import media_from_url
 from core.models.segment import Segment
 from core.models.word_timeline import WordTimeline
+from services.search_common import SearchResult
 from ui.utils.grid_layout import column_count_for_viewport
 from ui.cache.segment_search_cache import SegmentSearchCache
 from ui.widgets.segment_view_base_tiles import build_base_tiles
@@ -115,6 +116,7 @@ class SegmentViewGridController(QObject):
         self._tiles = []
         self.search_input = None
         self.search_status = None
+        
         # Release backend-held media handles before removing temp cache files.
         SharedVideoPreviewBackend.instance().release_source()
 
@@ -135,28 +137,15 @@ class SegmentViewGridController(QObject):
             if self.search_input is not None:
                 self.search_input.setText(cached.query)
 
-            restored = 0
-            for item in cached.results:
-                media_type = item.media_type
-                url = item.url
-                b = bytes(item.thumb_bytes)
-                if not url or not b:
-                    raise ValueError(f"Invalid cached result: {item!r}")
-                tile = build_result_tile(
-                    media_type=media_type,
-                    url=url,
-                    thumb=b,
-                    source=item.source,
-                    size_px=self._tile_size_px,
-                    preview_cache=self._preview_cache,
-                    parent=self._grid_host,
-                    on_select=self._select_media,
-                )
-                self._tiles.append(tile)
-                restored += 1
+            for result in cached.results:
+                if not result.url or not result.thumb_bytes:
+                    raise ValueError(f"Invalid cached result: {result!r}")
+                self._tiles.append(self._build_result_tile(result))
 
-            if restored:
-                self.search_status.setText(f"Showing {restored} cached result(s).")
+            if cached.results:
+                self.search_status.setText(
+                    f"Showing {len(cached.results)} cached result(s)."
+                )
 
         # Always reflect current segment.media in the 'current' Media preview tile
         self._sync_media_tile()
@@ -168,22 +157,19 @@ class SegmentViewGridController(QObject):
         self.search_button.setEnabled(not busy)
         self.search_status.setText(status)
 
-    def _apply_search_results(self, results: list) -> int:
-        added = 0
-        for media_type, url, data, source in results:
-            tile = build_result_tile(
-                media_type=media_type,
-                url=url,
-                thumb=bytes(data),
-                source=source,
-                size_px=self._tile_size_px,
-                preview_cache=self._preview_cache,
-                parent=self._grid_host,
-                on_select=self._select_media,
-            )
-            self._tiles.append(tile)
-            added += 1
-        return added
+    def _build_result_tile(self, result: SearchResult) -> QWidget:
+        return build_result_tile(
+            result,
+            size_px=self._tile_size_px,
+            preview_cache=self._preview_cache,
+            parent=self._grid_host,
+            on_select=self._select_media,
+        )
+
+    def _apply_search_results(self, results: list[SearchResult]) -> int:
+        for result in results:
+            self._tiles.append(self._build_result_tile(result))
+        return len(results)
 
     def _clear_results(self) -> None:
         """Remove dynamic result tiles while keeping the base tiles."""
@@ -211,17 +197,12 @@ class SegmentViewGridController(QObject):
             search_status=self.search_status,
         )
 
-    def _select_media(
-        self,
-        url: str,
-        thumb_bytes: bytes,
-        *,
-        media_type: MediaType = MediaType.IMAGE,
-        source: str | None = None,
-    ) -> None:
-        self._segment.set_media(media_from_url(media_type, url=url, source=source))
-        self._on_media_selected(self._segment.id, thumb_bytes)
-        self._sync_media_tile(thumb_bytes)
+    def _select_media(self, result: SearchResult) -> None:
+        self._segment.set_media(
+            media_from_url(result.media_type, url=result.url, source=result.source)
+        )
+        self._on_media_selected(self._segment.id, result.thumb_bytes)
+        self._sync_media_tile(result.thumb_bytes)
 
     def _sync_media_tile(self, thumb_bytes: bytes | None = None) -> None:
         if self._media_preview is None:

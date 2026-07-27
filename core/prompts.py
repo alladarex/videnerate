@@ -39,7 +39,7 @@ SEGMENT_KEYWORDS_SYSTEM_PROMPT = dedent(
     Your job is to create useful media search queries for each segment.
 
     Available sources may include:
-    - google: broad web search. Use for specific entities, brands, celebrities, fictional characters, niche references, screenshots, historical topics, or anything unlikely to appear in generic stock media.
+    - web: broad web image search. Use for specific entities, brands, celebrities, fictional characters, niche references, screenshots, historical topics, or anything unlikely to appear in generic stock media.
     - pexels: stock photo/video search. Use for generic real-world people, objects, places, actions, moods, and environments.
     - pixabay: stock photo/video/illustration search. Use similarly to Pexels for generic stock-searchable subjects.
     - giphy: GIF/reaction/meme search. Use only for emotions, jokes, reactions, memes, gestures, or short loopable moments.
@@ -51,14 +51,14 @@ SEGMENT_KEYWORDS_SYSTEM_PROMPT = dedent(
     4. Create visual search queries, not summaries of the sentence.
     5. Prefer Pexels/Pixabay for generic real-world visuals.
     6. Exclude Pexels/Pixabay when the subject is a copyrighted character, real person, brand, specific movie, game, book, product, app, or event.
-    7. Use Google for specific entities, copyrighted IP, brands, famous people, rare topics, exact references, or web-specific visuals.
+    7. Use web for specific entities, copyrighted IP, brands, famous people, rare topics, exact references, or web-specific visuals.
     8. Use Giphy only when the segment would benefit from a reaction, meme, emotion, gesture, or humorous loop.
     9. If the narration is not about a specific movie, book, game, or show, avoid queries likely to return posters, trailers, thumbnails, covers, logos, fan art, or reviews.
     10. For abstract segments, create a visual metaphor, you can use pexels or pixabay to to search for natural landscapes or other abstract visuals.
     11. Prefer short search queries:
-    - Pexels/Pixabay: 2–5 words.
-    - Google: 3–8 words.
-    - Giphy: 1–4 words.
+    - Pexels/Pixabay: 2-5 words.
+    - web: 3-8 words.
+    - Giphy: 1-4 words.
     12. Only use sources that are present in available_sources.
     
     Return valid JSON only, do not include any other text.

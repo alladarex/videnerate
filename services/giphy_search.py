@@ -1,8 +1,14 @@
 import urllib.parse
 
 from config import GIPHY_API_KEY
+from core.models.media import MediaType
 from headers import VIDENERATE_HEADERS
-from services.search_common import fetch_bytes, fetch_json, is_valid_http_url
+from services.search_common import (
+    SearchResult,
+    fetch_bytes,
+    fetch_json,
+    is_valid_http_url,
+)
 
 SOURCE = "Giphy"
 
@@ -18,10 +24,8 @@ def _pick_url(images: dict, *names: str) -> str | None:
     return None
 
 
-def fetch_giphy_gif_results(
-    query: str, *, limit: int = 10
-) -> list[tuple[str, bytes, str]]:
-    """Fetch (gif_url, thumb_bytes, source) through Giphy search."""
+def fetch_giphy_gif_results(query: str, *, limit: int = 10) -> list[SearchResult]:
+    """Search Giphy for GIFs."""
     if not GIPHY_API_KEY:
         return []
     q = query.strip()
@@ -44,7 +48,7 @@ def fetch_giphy_gif_results(
         return []
 
     items = payload.get("data") or []
-    out: list[tuple[str, bytes, str]] = []
+    out: list[SearchResult] = []
     for item in items:
         if not isinstance(item, dict):
             continue
@@ -65,7 +69,14 @@ def fetch_giphy_gif_results(
 
         thumb_bytes = fetch_bytes(thumb_url, headers=VIDENERATE_HEADERS, source=SOURCE)
         if thumb_bytes:
-            out.append((gif_url, thumb_bytes, SOURCE))
+            out.append(
+                SearchResult(
+                    media_type=MediaType.GIF,
+                    url=gif_url,
+                    thumb_bytes=thumb_bytes,
+                    source=SOURCE,
+                )
+            )
         if len(out) >= limit:
             break
 

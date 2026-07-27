@@ -1,11 +1,13 @@
 import urllib.parse
 
 from config import PIXABAY_API_KEY
+from core.models.media import MediaType
 from headers import VIDENERATE_HEADERS
 from services.search_common import (
     FILTER_HEADROOM,
     VIDEO_MAX_SHORT_EDGE,
     VIDEO_MIN_SHORT_EDGE,
+    SearchResult,
     fetch_bytes,
     fetch_json,
     is_valid_http_url,
@@ -65,10 +67,8 @@ def _pick_video_urls(result: dict) -> tuple[str | None, str | None]:
     return (video_url, thumb_url)
 
 
-def fetch_pixabay_image_results(
-    query: str, *, limit: int = 10
-) -> list[tuple[str, bytes, str]]:
-    """Fetch (image_url, thumb_bytes, source) through Pixabay image search."""
+def fetch_pixabay_image_results(query: str, *, limit: int = 10) -> list[SearchResult]:
+    """Search Pixabay for images."""
     if not PIXABAY_API_KEY:
         return []
     q = query.strip()
@@ -90,16 +90,23 @@ def fetch_pixabay_image_results(
         print(f"[{SOURCE}] fetch_pixabay_image_results failed for query '{q}': {e}")
         return []
 
-    out: list[tuple[str, bytes, str]] = []
+    out: list[SearchResult] = []
     for result in payload.get("hits") or []:
         if not isinstance(result, dict):
             continue
-        media_url, thumb_url = _pick_image_urls(result)
-        if not media_url or not thumb_url:
+        image_url, thumb_url = _pick_image_urls(result)
+        if not image_url or not thumb_url:
             continue
         thumb_bytes = fetch_bytes(thumb_url, headers=VIDENERATE_HEADERS, source=SOURCE)
         if thumb_bytes:
-            out.append((media_url, thumb_bytes, SOURCE))
+            out.append(
+                SearchResult(
+                    media_type=MediaType.IMAGE,
+                    url=image_url,
+                    thumb_bytes=thumb_bytes,
+                    source=SOURCE,
+                )
+            )
         if len(out) >= limit:
             break
     return out[:limit]
@@ -110,8 +117,8 @@ def fetch_pixabay_video_results(
     *,
     limit: int = 10,
     min_duration_s: float,
-) -> list[tuple[str, bytes, str]]:
-    """Fetch (video_url, thumb_bytes, source) through Pixabay video search."""
+) -> list[SearchResult]:
+    """Search Pixabay for videos at least min_duration_s long."""
     if not PIXABAY_API_KEY:
         return []
     q = query.strip()
@@ -136,7 +143,7 @@ def fetch_pixabay_video_results(
         print(f"[{SOURCE}] fetch_pixabay_video_results failed for query '{q}': {e}")
         return []
 
-    out: list[tuple[str, bytes, str]] = []
+    out: list[SearchResult] = []
     for result in payload.get("hits") or []:
         if not isinstance(result, dict):
             continue
@@ -148,7 +155,14 @@ def fetch_pixabay_video_results(
             continue
         thumb_bytes = fetch_bytes(thumb_url, headers=VIDENERATE_HEADERS, source=SOURCE)
         if thumb_bytes:
-            out.append((video_url, thumb_bytes, SOURCE))
+            out.append(
+                SearchResult(
+                    media_type=MediaType.VIDEO,
+                    url=video_url,
+                    thumb_bytes=thumb_bytes,
+                    source=SOURCE,
+                )
+            )
         if len(out) >= limit:
             break
     return out[:limit]

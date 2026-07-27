@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 from collections.abc import Callable
 
 from core.models.media import MediaType
+from services.search_common import SearchResult
 from ui.widgets.hover_media_preview import HoverMediaPreview
 from ui.cache.segment_preview_cache import SegmentPreviewCache
 from ui.styles.qss import MUTED_LABEL
@@ -87,9 +88,9 @@ class _BaseResultTile(TileFrame):
             self.clicked.emit()
         super().mousePressEvent(event)
 
-    def set_thumbnail_bytes(self, data: bytes) -> None:
+    def set_thumbnail_bytes(self, thumb_bytes: bytes) -> None:
         target = inner_preview_edge(self._size_px, reserved=40)
-        pixmap = load_scaled_pixmap(data, target)
+        pixmap = load_scaled_pixmap(thumb_bytes, target)
         if pixmap is None:
             self._label.setText(self._placeholder_text)
             return
@@ -104,7 +105,7 @@ class _HoverPlayableTile(_BaseResultTile):
         size_px: int,
         icon_filename: str,
         placeholder_text: str,
-        media_url: str,
+        url: str,
         preview_cache: SegmentPreviewCache,
         media_type: MediaType,
         parent: QWidget | None = None,
@@ -123,15 +124,13 @@ class _HoverPlayableTile(_BaseResultTile):
             parent=self._content_host,
         )
         self._media_preview.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        self._media_preview.bind_from_search_url(
-            media_type=media_type, media_url=media_url
-        )
+        self._media_preview.bind_from_search_url(media_type=media_type, media_url=url)
         self._content_layout.removeWidget(self._label)
         self._label.hide()
         self._content_layout.addWidget(self._media_preview, 1)
 
-    def set_thumbnail_bytes(self, data: bytes) -> None:
-        self._media_preview.set_thumbnail_bytes(data)
+    def set_thumbnail_bytes(self, thumb_bytes: bytes) -> None:
+        self._media_preview.set_thumbnail_bytes(thumb_bytes)
 
     def enterEvent(self, event) -> None:
         super().enterEvent(event)
@@ -170,7 +169,7 @@ class VideoTile(_HoverPlayableTile):
         self,
         *,
         size_px: int,
-        media_url: str,
+        url: str,
         preview_cache: SegmentPreviewCache,
         parent: QWidget | None = None,
     ) -> None:
@@ -178,7 +177,7 @@ class VideoTile(_HoverPlayableTile):
             size_px=size_px,
             icon_filename="video-w.png",
             placeholder_text="Video failed",
-            media_url=media_url,
+            url=url,
             preview_cache=preview_cache,
             media_type=MediaType.VIDEO,
             parent=parent,
@@ -193,7 +192,7 @@ class GifTile(_HoverPlayableTile):
         self,
         *,
         size_px: int,
-        media_url: str,
+        url: str,
         preview_cache: SegmentPreviewCache,
         parent: QWidget | None = None,
     ) -> None:
@@ -201,7 +200,7 @@ class GifTile(_HoverPlayableTile):
             size_px=size_px,
             icon_filename="gif-w.png",
             placeholder_text="GIF failed",
-            media_url=media_url,
+            url=url,
             preview_cache=preview_cache,
             media_type=MediaType.GIF,
             parent=parent,
@@ -209,52 +208,33 @@ class GifTile(_HoverPlayableTile):
 
 
 def build_result_tile(
+    result: SearchResult,
     *,
-    media_type: MediaType,
-    url: str,
-    thumb: bytes,
-    source: str | None,
     size_px: int,
     preview_cache: SegmentPreviewCache,
     parent: QWidget,
-    on_select: Callable[..., None],
+    on_select: Callable[[SearchResult], None],
 ) -> QWidget:
-    """Build one search result tile and wire click to on_select(url, thumb, media_type=..., source=...)."""
-    if media_type == MediaType.VIDEO:
+    """Build one search result tile and wire its click to on_select(result)."""
+    if result.media_type == MediaType.IMAGE:
+        tile = ImageTile(size_px=size_px, parent=parent)
+    elif result.media_type == MediaType.VIDEO:
         tile = VideoTile(
             size_px=size_px,
-            media_url=url,
+            url=result.url,
             preview_cache=preview_cache,
             parent=parent,
         )
-        tile.set_thumbnail_bytes(thumb)
-        tile.clicked.connect(
-            lambda u=url, b=bytes(thumb), s=source: on_select(
-                u, b, media_type=MediaType.VIDEO, source=s
-            )
-        )
-        return tile
-    if media_type == MediaType.IMAGE:
-        tile = ImageTile(size_px=size_px, parent=parent)
-        tile.set_thumbnail_bytes(thumb)
-        tile.clicked.connect(
-            lambda u=url, b=bytes(thumb), s=source: on_select(
-                u, b, media_type=MediaType.IMAGE, source=s
-            )
-        )
-        return tile
-    if media_type == MediaType.GIF:
+    elif result.media_type == MediaType.GIF:
         tile = GifTile(
             size_px=size_px,
-            media_url=url,
+            url=result.url,
             preview_cache=preview_cache,
             parent=parent,
         )
-        tile.set_thumbnail_bytes(thumb)
-        tile.clicked.connect(
-            lambda u=url, b=bytes(thumb), s=source: on_select(
-                u, b, media_type=MediaType.GIF, source=s
-            )
-        )
-        return tile
-    raise ValueError(f"Unknown media type: {media_type}")
+    else:
+        raise ValueError(f"Unknown media type: {result.media_type}")
+
+    tile.set_thumbnail_bytes(result.thumb_bytes)
+    tile.clicked.connect(lambda: on_select(result))
+    return tile

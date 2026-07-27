@@ -4,8 +4,14 @@ import re
 import urllib.parse
 import urllib.request
 
+from core.models.media import MediaType
 from headers import BROWSER_HEADERS, ddg_api_headers
-from services.search_common import HTTP_TIMEOUT_S, fetch_bytes, fetch_json
+from services.search_common import (
+    HTTP_TIMEOUT_S,
+    SearchResult,
+    fetch_bytes,
+    fetch_json,
+)
 
 # Log tag only. Unlike the stock providers, the attribution this module returns per
 # result is that result's own page URL, never this constant.
@@ -23,13 +29,10 @@ def _ddg_vqd_from_html(html: str) -> str | None:
     return m.group(1)
 
 
-def fetch_web_image_results(
-    query: str, *, limit: int = 10
-) -> list[tuple[str, bytes, str]]:
-    """Fetch (image_url, thumb_bytes, source) through DuckDuckGo image search.
+def fetch_web_image_results(query: str, *, limit: int = 10) -> list[SearchResult]:
+    """Search the web for images through DuckDuckGo.
 
-    The third element is the page the image was found on, which is the attribution
-    shown for web results. Stock providers return their own name there instead.
+    Each result is credited to the page the image was found on.
     """
     q = query.strip()
     if not q:
@@ -78,10 +81,17 @@ def fetch_web_image_results(
         if len(items) >= limit:
             break
 
-    out: list[tuple[str, bytes, str]] = []
+    out: list[SearchResult] = []
     for image_url, thumb_url, source_url in items:
         thumb_bytes = fetch_bytes(thumb_url, headers=BROWSER_HEADERS, source=SOURCE)
         if thumb_bytes:
-            out.append((image_url, thumb_bytes, source_url))
+            out.append(
+                SearchResult(
+                    media_type=MediaType.IMAGE,
+                    url=image_url,
+                    thumb_bytes=thumb_bytes,
+                    source=source_url,
+                )
+            )
 
     return out[:limit]

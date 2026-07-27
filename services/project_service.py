@@ -16,6 +16,7 @@ from core.project_paths import ProjectPaths
 from core.word_tokenize import assert_segment_words_match_narration, normalize_text
 from services.alignment_service import align_project_audio
 from services.llm_service import generate_segment_search_plan
+from services.media_search import search_groups
 from services.voiceover_service import generate_voiceover_mp3
 
 INVALID_FOLDER_CHARS = set('<>:"/\\|?*')
@@ -85,7 +86,7 @@ def _write_segments_analyzed_file(
     paths: ProjectPaths, segments: list[str], selected_model: str
 ) -> None:
     segments_payload = {
-        "available_sources": ["google", "pexels", "pixabay", "giphy"],
+        "available_sources": list(search_groups()),
         "segments": [
             {"id": idx, "text": text}
             for idx, text in enumerate(segments, start=1)
