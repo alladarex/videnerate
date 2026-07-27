@@ -34,6 +34,7 @@ class ProjectWindow(QMainWindow):
     def __init__(self, project: Project) -> None:
         super().__init__()
         self._project = project
+        # UI-only: the preview cache and voiceover player need file paths, not a Project
         self._paths = ProjectPaths.from_title(project.title)
         self._voiceover_btn: QPushButton | None = None
         self._stack: QStackedWidget | None = None
@@ -76,7 +77,7 @@ class ProjectWindow(QMainWindow):
             warning = MissingMediaDialog(self)
             if warning.exec() != MissingMediaDialog.DialogCode.Accepted:
                 return
-        ExportDialog(self._project, self._paths, self).exec()
+        ExportDialog(self._project, self).exec()
 
     def _toggle_voiceover(self) -> None:
         self._voiceover.toggle_full()

@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 from config import APP_DIR
+from core.project_paths import ProjectPaths
 
 REPORT_DIR = APP_DIR / "logs" / "alignment"
 
@@ -14,7 +15,7 @@ def _safe_name(name: str) -> str:
 
 
 def write_alignment_report(
-    project_root: Path,
+    paths: ProjectPaths,
     *,
     success: bool,
     lines: list[str],
@@ -22,11 +23,11 @@ def write_alignment_report(
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     status = "SUCCESS" if success else "FAILURE"
-    filename = f"{stamp}_{_safe_name(project_root.name)}_{status}.txt"
+    filename = f"{stamp}_{_safe_name(paths.root.name)}_{status}.txt"
     report_path = REPORT_DIR / filename
 
     header_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    header = f"{header_time}  {project_root.resolve()}\n[{status}]\n"
+    header = f"{header_time}  {paths.root}\n[{status}]\n"
     body = "\n".join(lines) + "\n"
     report_path.write_text(header + body, encoding="utf-8")
     return report_path

@@ -25,9 +25,6 @@ from core.models.word_timeline import load_word_timeline, segment_playback_bound
 from core.project_paths import ProjectPaths
 from services.project_service import save_project
 
-EXPORT_FILENAME = "export.mp4"
-_EXPORT_TMP_FILENAME = "export.tmp.mp4"
-
 
 class ExportCancelled(Exception):
     pass
@@ -39,6 +36,7 @@ class _EncodeProgressLogger(ProgressBarLogger):
     def __init__(
         self,
         on_progress: Callable[[int, int, str], None],
+        *,
         message: str,
         cancel_event: Event | None,
     ) -> None:
@@ -116,8 +114,9 @@ def _add_source_overlay(
 
 
 def _build_segment_clip(
-    paths: ProjectPaths,
     segment: Segment,
+    *,
+    paths: ProjectPaths,
     duration: float,
     settings: ExportSettings,
 ) -> VideoClip:
@@ -153,12 +152,13 @@ def _build_segment_clip(
 
 def export_project(
     project: Project,
-    paths: ProjectPaths,
     settings: ExportSettings,
+    *,
     on_progress: Callable[[int, int, str], None] | None = None,
     cancel_event: Event | None = None,
 ) -> Path:
     """Compose the project's media into an MP4 and return the output path."""
+    paths = ProjectPaths.from_title(project.title)
 
     def report(phase: int, percent: int, message: str) -> None:
         """Report progress to the caller.
@@ -190,7 +190,9 @@ def export_project(
                 raise ExportCancelled()
             start, end = segment_playback_bounds(timeline, seg)
             duration = max(end - start, 0.0)
-            clip = _build_segment_clip(paths, seg, duration, settings).with_start(start)
+            clip = _build_segment_clip(
+                seg, paths=paths, duration=duration, settings=settings
+            ).with_start(start)
             clips.append(clip)
             built += 1
             pct = int(built * 100 / total)
@@ -200,16 +202,16 @@ def export_project(
         composite = CompositeVideoClip(clips, size=(settings.width, settings.height))
         composite = composite.with_audio(audio).with_duration(timeline.audio_duration)
 
-        output_path = paths.root / EXPORT_FILENAME
-        tmp_path = paths.root / _EXPORT_TMP_FILENAME
-        tmp_audio_path = paths.root / ".export_audio.m4a"
+        output_path = paths.export_mp4
+        tmp_path = paths.export_tmp_mp4
+        tmp_audio_path = paths.export_audio_m4a
 
         # Phase 2: encoding
         report(2, 0, "Encoding video...")
         encode_logger = _EncodeProgressLogger(
             report,
-            "Encoding video...",
-            cancel_event,
+            message="Encoding video...",
+            cancel_event=cancel_event,
         )
         try:
             composite.write_videofile(

@@ -137,7 +137,7 @@ def create_and_save_project(
     project = Project(segments=segments, title=dir_name)
 
     status("Aligning audio to narration...")
-    align_project_audio(paths, project)
+    align_project_audio(project)
 
     status("Saving project...")
     save_json(paths.project_json, project.to_dict())

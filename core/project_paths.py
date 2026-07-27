@@ -13,6 +13,9 @@ NARRATION_FILENAME = "narration.txt"
 WORD_TIMELINE_FILENAME = "word_timeline.json"
 SEGMENTS_ANALYZED_FILENAME = "segments-analyzed.json"
 VOICEOVER_FILENAME = "voiceover.mp3"
+EXPORT_FILENAME = "export.mp4"
+EXPORT_TMP_FILENAME = "export.tmp.mp4"
+EXPORT_AUDIO_TMP_FILENAME = ".export_audio.m4a"
 
 
 @dataclass(frozen=True)
@@ -56,6 +59,18 @@ class ProjectPaths:
     @property
     def voiceover_mp3(self) -> Path:
         return self.audio_dir / VOICEOVER_FILENAME
+
+    @property
+    def export_mp4(self) -> Path:
+        return self.root / EXPORT_FILENAME
+
+    @property
+    def export_tmp_mp4(self) -> Path:
+        return self.root / EXPORT_TMP_FILENAME
+
+    @property
+    def export_audio_m4a(self) -> Path:
+        return self.root / EXPORT_AUDIO_TMP_FILENAME
 
     def file(self, rel_path: str) -> Path:
         """Resolve a project-relative path (e.g. media/foo.jpg)."""

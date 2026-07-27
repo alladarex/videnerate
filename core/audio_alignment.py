@@ -10,6 +10,7 @@ from pydub import AudioSegment
 from core.alignment_report import write_alignment_report
 from core.models.project import Project
 from core.models.word_timeline import WordSpan, WordTimeline
+from core.project_paths import ProjectPaths
 from core.word_tokenize import tokenize_words
 
 _WHISPER_MODEL_NAME = "small"
@@ -171,7 +172,7 @@ def build_word_timeline(
     audio_path: Path,
     narration: str,
     *,
-    project_root: Path,
+    paths: ProjectPaths,
 ) -> WordTimeline:
     """Align narration words to voiceover audio using Whisper."""
     if not narration.strip():
@@ -192,7 +193,7 @@ def build_word_timeline(
         timeline, match_ratio = _timeline_from_asr(ref_words, asr_tokens, duration)
         if _timeline_acceptable(timeline, match_ratio):
             write_alignment_report(
-                project_root,
+                paths,
                 success=True,
                 lines=base_lines
                 + _report_success_lines(timeline, match_ratio, len(asr_tokens), len(ref_words)),
@@ -207,7 +208,7 @@ def build_word_timeline(
         last_error = exc
 
     write_alignment_report(
-        project_root,
+        paths,
         success=False,
         lines=base_lines + [f"error: {last_error}"],
     )

@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
 
 from core.export_settings import ExportSettings
 from core.models.project import Project
-from core.project_paths import ProjectPaths
 from services.export_service import ExportCancelled, export_project
 from ui.styles.qss import ACTION_BUTTON
 
@@ -31,13 +30,12 @@ class ExportWorker(QObject):
     def __init__(
         self,
         project: Project,
-        paths: ProjectPaths,
+        *,
         settings: ExportSettings,
         cancel_event: Event,
     ) -> None:
         super().__init__()
         self._project = project
-        self._paths = paths
         self._settings = settings
         self._cancel_event = cancel_event
 
@@ -49,7 +47,6 @@ class ExportWorker(QObject):
         try:
             output_path = export_project(
                 self._project,
-                self._paths,
                 self._settings,
                 on_progress=lambda phase, pct, msg: self.progress.emit(phase, pct, msg),
                 cancel_event=self._cancel_event,
@@ -66,12 +63,9 @@ class ExportWorker(QObject):
 class ExportDialog(QDialog):
     """Collect export settings then run the export with a progress bar."""
 
-    def __init__(
-        self, project: Project, paths: ProjectPaths, parent: QWidget | None = None
-    ) -> None:
+    def __init__(self, project: Project, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._project = project
-        self._paths = paths
         self._thread: QThread | None = None
         self._worker: ExportWorker | None = None
         self._export_running = False
@@ -180,8 +174,7 @@ class ExportDialog(QDialog):
         self._thread = QThread()
         self._worker = ExportWorker(
             self._project,
-            self._paths,
-            ExportSettings(subtitles=self._subtitles_checkbox.isChecked()),
+            settings=ExportSettings(subtitles=self._subtitles_checkbox.isChecked()),
             cancel_event=self._cancel_event,
         )
         self._worker.moveToThread(self._thread)

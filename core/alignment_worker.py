@@ -9,12 +9,13 @@ from core.project_paths import ProjectPaths
 
 
 def main(project_root: Path) -> int:
+    # Raw Path, not ProjectPaths: argv can only carry text, so paths are built here.
     paths = ProjectPaths.from_root(project_root)
     narration = paths.narration_txt.read_text(encoding="utf-8")
     timeline = build_word_timeline(
         paths.voiceover_mp3,
         narration,
-        project_root=paths.root,
+        paths=paths,
     )
     save_word_timeline(paths, timeline)
     return 0

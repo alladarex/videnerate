@@ -28,7 +28,7 @@ def _run_whisper_alignment_subprocess(paths: ProjectPaths) -> None:
         )
     except subprocess.TimeoutExpired as exc:
         write_alignment_report(
-            paths.root,
+            paths,
             success=False,
             lines=[
                 f"audio: {paths.voiceover_mp3.resolve()}",
@@ -41,7 +41,7 @@ def _run_whisper_alignment_subprocess(paths: ProjectPaths) -> None:
         ) from exc
     except OSError as exc:
         write_alignment_report(
-            paths.root,
+            paths,
             success=False,
             lines=[
                 f"audio: {paths.voiceover_mp3.resolve()}",
@@ -56,7 +56,7 @@ def _run_whisper_alignment_subprocess(paths: ProjectPaths) -> None:
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "").strip()
         write_alignment_report(
-            paths.root,
+            paths,
             success=False,
             lines=[
                 f"audio: {paths.voiceover_mp3.resolve()}",
@@ -71,8 +71,9 @@ def _run_whisper_alignment_subprocess(paths: ProjectPaths) -> None:
         )
 
 
-def align_project_audio(paths: ProjectPaths, project: Project) -> WordTimeline:
+def align_project_audio(project: Project) -> WordTimeline:
     """Build word timeline and segment word indices from narration and voiceover."""
+    paths = ProjectPaths.from_title(project.title)
     if not paths.narration_txt.is_file():
         raise FileNotFoundError(f"Narration file not found: {paths.narration_txt}")
     if not paths.voiceover_mp3.is_file():
