@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from .media import Media, media_from_dict
+from .media import Media
 
 
 class Segment:
-    def __init__(self, text: str, id: int):
-        self.id = id
+    def __init__(self, text: str, segment_id: int):
+        self.id = segment_id
         self.text = text
         self.media: Media | None = None
         self.word_start: int | None = None
@@ -24,16 +24,10 @@ class Segment:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Segment:
-        seg = cls(text=data["text"], id=data["id"])
+        seg = cls(text=data["text"], segment_id=data["id"])
         raw = data.get("media")
         if raw is not None:
-            seg.set_media(media_from_dict(raw))
+            seg.media = Media.from_dict(raw)
         seg.word_start = int(data["word_start"])
         seg.word_end = int(data["word_end"])
         return seg
-
-    def set_media(self, media: Media) -> None:
-        """Associate a media object with the segment"""
-        if not isinstance(media, Media):
-            raise ValueError("Invalid media object.")
-        self.media = media

@@ -1,6 +1,6 @@
 from .segment import Segment
 from .project import Project
-from .media import Media, ImageMedia, VideoMedia, GifMedia
+from .media import Media, MediaType
 from .word_timeline import (
     WordSpan,
     WordTimeline,
@@ -12,9 +12,7 @@ __all__ = [
     'Segment',
     'Project',
     'Media',
-    'ImageMedia',
-    'VideoMedia',
-    'GifMedia',
+    'MediaType',
     'WordSpan',
     'WordTimeline',
     'segment_playback_bounds',

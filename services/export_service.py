@@ -18,7 +18,7 @@ from moviepy.video.fx import Loop
 from proglog import ProgressBarLogger
 
 from core.export_settings import ExportSettings
-from core.models.media import GifMedia, ImageMedia, VideoMedia
+from core.models.media import MediaType
 from core.models.project import Project
 from core.models.segment import Segment
 from core.models.word_timeline import load_word_timeline, segment_playback_bounds
@@ -154,20 +154,17 @@ def _build_segment_clip(
 
     file_path = str(paths.file(media.file_path))
 
-    if isinstance(media, ImageMedia):
-        clip = ImageClip(file_path).with_duration(duration)
-    elif isinstance(media, VideoMedia):
-        clip = _silent_video_clip(file_path)
-        if media.start_timestamp and media.start_timestamp > 0:
-            clip = clip.subclipped(media.start_timestamp)
-        clip = clip.with_effects([Loop(duration=duration)])
-    elif isinstance(media, GifMedia):
-        clip = _silent_video_clip(file_path)
-        clip = clip.with_effects([Loop(duration=duration)])
-    else:
-        raise ValueError(
-            f"Unsupported media type for segment {segment.id}: {type(media).__name__}"
-        )
+    match media.media_type:
+        case MediaType.IMAGE:
+            clip = ImageClip(file_path).with_duration(duration)
+        case MediaType.VIDEO:
+            clip = _silent_video_clip(file_path)
+            if media.start_timestamp > 0:
+                clip = clip.subclipped(media.start_timestamp)
+            clip = clip.with_effects([Loop(duration=duration)])
+        case MediaType.GIF:
+            clip = _silent_video_clip(file_path)
+            clip = clip.with_effects([Loop(duration=duration)])
 
     clip = _fit(clip, width, height)
     if media.source:

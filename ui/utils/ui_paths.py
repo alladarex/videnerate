@@ -5,5 +5,5 @@ _ICONS_DIR = _UI_DIR / "assets" / "icons"
 
 
 def icon_path(name: str) -> Path:
-    """Path to a file under ``ui/assets/icons/``."""
+    """Path to a file under ui/assets/icons/."""
     return _ICONS_DIR / name

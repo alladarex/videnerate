@@ -9,7 +9,7 @@ This module owns the dynamic tile area inside segment detail view:
 from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QGridLayout, QLineEdit, QScrollArea, QWidget
 
-from core.models.media import media_from_url
+from core.models.media import Media
 from core.models.segment import Segment
 from core.models.word_timeline import WordTimeline
 from services.search_common import SearchResult
@@ -198,8 +198,8 @@ class SegmentViewGridController(QObject):
         )
 
     def _select_media(self, result: SearchResult) -> None:
-        self._segment.set_media(
-            media_from_url(result.media_type, url=result.url, source=result.source)
+        self._segment.media = Media(
+            result.media_type, url=result.url, source=result.source
         )
         self._on_media_selected(self._segment.id, result.thumb_bytes)
         self._sync_media_tile(result.thumb_bytes)

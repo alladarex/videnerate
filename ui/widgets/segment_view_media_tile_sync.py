@@ -30,7 +30,7 @@ def sync_media_tile(
         return
 
     # 2) Persisted media (project folder / relative path in project.json)
-    if getattr(segment.media, "file_path", None):
+    if segment.media.file_path:
         pixmap = load_media_file_thumbnail(
             media=segment.media,
             tile_size_px=tile_size_px,
@@ -48,7 +48,7 @@ def sync_media_tile(
         return
 
     # 4) Reuse search-cache thumbnail for this URL
-    if getattr(segment.media, "url", None):
+    if segment.media.url:
         cached_thumb = search_cache.thumb_bytes_for_url(segment.id, segment.media.url)
         if cached_thumb:
             media_preview.bind_from_media(

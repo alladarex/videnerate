@@ -134,7 +134,7 @@ def create_and_save_project(
 
     status("Generating voiceover...")
     generate_voiceover_mp3(narration, paths.voiceover_mp3)
-    project = Project(segments=segments, title=dir_name)
+    project = Project.from_segment_texts(segments, title=dir_name)
 
     status("Aligning audio to narration...")
     align_project_audio(project)
@@ -164,8 +164,8 @@ def _download_url_to_path(url: str, dest_base: Path, *, timeout_s: float = 20.0)
 def _ensure_media_persisted(paths: ProjectPaths, segment_id: int, media: Media) -> None:
     """Ensure media is persisted under media/ by modifying media object.
 
-    If media.url is set, downloads it into media/ and replaces it with file_path
-    (clearing url). If media.file_path points outside media/, copies it into media/.
+    If media.url is set, downloads it into media/ and sets file_path to the result. 
+    If media.file_path points outside media/, copies it into media/.
     """
     media_dir = paths.media_dir
     media_dir.mkdir(parents=True, exist_ok=True)
@@ -177,8 +177,7 @@ def _ensure_media_persisted(paths: ProjectPaths, segment_id: int, media: Media) 
             try:
                 src.relative_to(media_dir.resolve())
                 # Already in media dir, normalize to a relative path
-                rel = _rel_path(paths, src)
-                media.set_file_path(rel)
+                media.file_path = _rel_path(paths, src)
                 return
             except ValueError:
                 pass
@@ -193,8 +192,7 @@ def _ensure_media_persisted(paths: ProjectPaths, segment_id: int, media: Media) 
             dest = media_dir / name
             if not dest.exists():
                 shutil.copyfile(src, dest)
-            rel = _rel_path(paths, dest)
-            media.set_file_path(rel)
+            media.file_path = _rel_path(paths, dest)
             return
 
         return
@@ -205,8 +203,7 @@ def _ensure_media_persisted(paths: ProjectPaths, segment_id: int, media: Media) 
         # Extension is added during download.
         base_name = f"{segment_id}_{hashlib.sha256(url.encode('utf-8')).hexdigest()[:16]}"
         dest = _download_url_to_path(url, media_dir / base_name)
-        rel = _rel_path(paths, dest)
-        media.set_file_path(rel)
+        media.file_path = _rel_path(paths, dest)
         return
 
     return

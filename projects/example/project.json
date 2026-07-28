@@ -140,11 +140,10 @@
       "id": 11,
       "text": "the ancient Greek philosopher Aristotle considered examples a powerful form of rhetorical proof,",
       "media": {
-        "type": "video",
-        "file_path": "media/11_c4cb16bfaa0f3e5e.mp4",
-        "url": null,
-        "start_timestamp": 0.0,
-        "source": "Pexels"
+        "type": "gif",
+        "file_path": "media/11_0943d6f6982fa823.gif",
+        "url": "https://media2.giphy.com/media/v1.Y2lkPTIwMjY3YmNlOHltbzlyZmlxMWgwaTkwaGYwMGd0cmdrdHpxazM2eTMzMzVrdzdvMSZlcD12MV9naWZzX3NlYXJjaCZjdD1n/Sd1KRbPEarxWWVwQi7/giphy.gif",
+        "source": "Giphy"
       },
       "word_start": 101,
       "word_end": 113
@@ -152,7 +151,13 @@
     {
       "id": 12,
       "text": "even more persuasive than logical arguments in some situations",
-      "media": null,
+      "media": {
+        "type": "video",
+        "file_path": "media/12_006d14d4b7ebb612.mp4",
+        "url": "https://cdn.pixabay.com/video/2025/10/22/311338_small.mp4",
+        "start_timestamp": 0.0,
+        "source": "Pixabay"
+      },
       "word_start": 114,
       "word_end": 122
     },
@@ -163,7 +168,7 @@
         "type": "video",
         "file_path": "media/13_5d8e833d0cdcbf1e.mp4",
         "url": null,
-        "start_timestamp": 0,
+        "start_timestamp": 0.0,
         "source": "Pixabay"
       },
       "word_start": 123,
@@ -191,7 +196,13 @@
     {
       "id": 16,
       "text": "Without examples, many complex ideas would remain confusing",
-      "media": null,
+      "media": {
+        "type": "video",
+        "file_path": "media/16_9ee0f8d69437dd04.mp4",
+        "url": "https://videos.pexels.com/video-files/37166944/15745203_720_1280_30fps.mp4",
+        "start_timestamp": 0.0,
+        "source": "Pexels"
+      },
       "word_start": 152,
       "word_end": 159
     },
