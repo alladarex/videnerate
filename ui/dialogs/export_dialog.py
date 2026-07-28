@@ -1,6 +1,7 @@
+from pathlib import Path
 from threading import Event
 
-from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -19,55 +20,18 @@ from core.export_settings import ExportSettings
 from core.models.project import Project
 from services.export_service import ExportCancelled, export_project
 from ui.styles.qss import ACTION_BUTTON
-
-
-class ExportWorker(QObject):
-    progress = Signal(int, int, str)
-    finished = Signal(str)
-    failed = Signal(str)
-    cancelled = Signal()
-
-    def __init__(
-        self,
-        project: Project,
-        *,
-        settings: ExportSettings,
-        cancel_event: Event,
-    ) -> None:
-        super().__init__()
-        self._project = project
-        self._settings = settings
-        self._cancel_event = cancel_event
-
-    def cancel(self) -> None:
-        self._cancel_event.set()
-
-    @Slot()
-    def run(self) -> None:
-        try:
-            output_path = export_project(
-                self._project,
-                self._settings,
-                on_progress=lambda phase, pct, msg: self.progress.emit(phase, pct, msg),
-                cancel_event=self._cancel_event,
-            )
-        except ExportCancelled:
-            self.cancelled.emit()
-            return
-        except Exception as exc:
-            self.failed.emit(str(exc))
-            return
-        self.finished.emit(str(output_path))
+from ui.utils.background_task import run_in_thread
 
 
 class ExportDialog(QDialog):
     """Collect export settings then run the export with a progress bar."""
 
+    # Emitted from the export thread: phase, percent, message.
+    progress_changed = Signal(int, int, str)
+
     def __init__(self, project: Project, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._project = project
-        self._thread: QThread | None = None
-        self._worker: ExportWorker | None = None
         self._export_running = False
         self._cancel_event: Event | None = None
         self._current_phase = 0
@@ -90,6 +54,8 @@ class ExportDialog(QDialog):
         self._build_ui()
 
     def _build_ui(self) -> None:
+        self.progress_changed.connect(self._on_export_progress)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(16)
@@ -157,7 +123,7 @@ class ExportDialog(QDialog):
         layout.addWidget(self._stack)
 
     def _start_export(self) -> None:
-        if self._thread is not None:
+        if self._export_running:
             return
 
         self._export_running = True
@@ -170,24 +136,22 @@ class ExportDialog(QDialog):
         self._progress_bar.setFormat("%p% (1/2)")
         self._progress_label.setText("Starting export...")
 
-        self._cancel_event = Event()
-        self._thread = QThread()
-        self._worker = ExportWorker(
-            self._project,
-            settings=ExportSettings(subtitles=self._subtitles_checkbox.isChecked()),
-            cancel_event=self._cancel_event,
+        cancel_event = Event()
+        settings = ExportSettings(subtitles=self._subtitles_checkbox.isChecked())
+        self._cancel_event = cancel_event
+        run_in_thread(
+            lambda: export_project(
+                self._project,
+                settings,
+                on_progress=self.progress_changed.emit,
+                cancel_event=cancel_event,
+            ),
+            on_success=self._on_export_finished,
+            on_error=self._on_export_failed,
         )
-        self._worker.moveToThread(self._thread)
-
-        self._thread.started.connect(self._worker.run)
-        self._worker.progress.connect(self._on_progress)
-        self._worker.finished.connect(self._on_finished)
-        self._worker.failed.connect(self._on_failed)
-        self._worker.cancelled.connect(self._on_cancelled)
-        self._thread.start()
 
     @Slot(int, int, str)
-    def _on_progress(self, phase: int, percent: int, message: str) -> None:
+    def _on_export_progress(self, phase: int, percent: int, message: str) -> None:
         if phase != self._current_phase:
             self._current_phase = phase
             self._progress_bar.setValue(0)
@@ -195,35 +159,28 @@ class ExportDialog(QDialog):
         self._progress_bar.setValue(percent)
         self._progress_label.setText(message)
 
-    def _stop_worker_thread(self) -> None:
-        if self._thread is not None:
-            self._thread.quit()
-            self._thread.wait()
-            self._thread.deleteLater()
-            self._thread = None
-        if self._worker is not None:
-            self._worker.deleteLater()
-            self._worker = None
+    def _reset_export_state(self) -> None:
+        """Clear the state of one export run, so a new one can be started."""
         self._export_running = False
         self._cancel_event = None
 
-    @Slot(str)
-    def _on_finished(self, output_path: str) -> None:
-        self._stop_worker_thread()
+    def _on_export_finished(self, output_path: Path) -> None:
+        self._reset_export_state()
         self.setWindowTitle("Export complete")
         self._finished_label.setText(f"Export complete.\n\nVideo saved to:\n{output_path}")
         self._stack.setCurrentIndex(2)
 
-    @Slot(str)
-    def _on_failed(self, error_message: str) -> None:
-        self._stop_worker_thread()
+    def _on_export_failed(self, error: Exception) -> None:
+        if isinstance(error, ExportCancelled):
+            self._on_export_cancelled()
+            return
+        self._reset_export_state()
         self.setWindowTitle("Export failed")
-        self._finished_label.setText(f"Export failed.\n\n{error_message}")
+        self._finished_label.setText(f"Export failed.\n\n{error}")
         self._stack.setCurrentIndex(2)
 
-    @Slot()
-    def _on_cancelled(self) -> None:
-        self._stop_worker_thread()
+    def _on_export_cancelled(self) -> None:
+        self._reset_export_state()
         if self._close_after_cancel:
             self.reject()
             return
@@ -250,8 +207,8 @@ class ExportDialog(QDialog):
         if not self._confirm_cancel():
             return
         self._close_after_cancel = False
-        if self._worker is not None:
-            self._worker.cancel()
+        if self._cancel_event is not None:
+            self._cancel_event.set()
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._export_running:
@@ -259,9 +216,9 @@ class ExportDialog(QDialog):
                 event.ignore()
                 return
             self._close_after_cancel = True
-            if self._worker is not None:
-                self._worker.cancel()
+            if self._cancel_event is not None:
+                self._cancel_event.set()
             event.ignore()
             return
-        self._stop_worker_thread()
+        self._reset_export_state()
         super().closeEvent(event)
