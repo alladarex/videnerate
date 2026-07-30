@@ -2,31 +2,32 @@
 
 This module owns the dynamic tile area inside segment detail view:
 - builds/restores base and search result tiles
+- runs media search off the UI thread and turns the results into tiles
 - binds tile clicks to segment media selection
 - keeps the media preview tile synchronized with model/cache state
 """
 
 from PySide6.QtCore import QObject
-from PySide6.QtWidgets import QGridLayout, QLineEdit, QScrollArea, QWidget
+from PySide6.QtWidgets import QGridLayout, QLabel, QLineEdit, QPushButton, QScrollArea, QWidget
 
 from core.models.media import Media
 from core.models.segment import Segment
-from core.models.word_timeline import WordTimeline
+from core.models.word_timeline import WordTimeline, segment_playback_duration
+from services.media_search import run_distributed_search
 from services.search_common import SearchResult
-from ui.utils.grid_layout import column_count_for_viewport
+from ui.utils.background_task import run_in_thread
+from ui.utils.grid_layout import relayout_grid
 from ui.cache.segment_search_cache import SegmentSearchCache
+from ui.widgets.search_settings import search_settings_state
 from ui.widgets.segment_view_base_tiles import build_base_tiles
 from ui.widgets.segment_view_media_tile_sync import sync_media_tile
 from ui.cache.segment_preview_cache import SegmentPreviewCache
 from ui.widgets.preview_playback import SharedVideoPreviewBackend
 from ui.widgets.segment_view_result_tiles import build_result_tile
-from ui.widgets.segment_view_search_controller import SegmentViewSearchController
 
 
 class SegmentViewGridController(QObject):
     """Manage segment view grid state, search lifecycle, and tile preview updates."""
-
-    _BASE_TILE_COUNT = 4
 
     def __init__(
         self,
@@ -36,7 +37,7 @@ class SegmentViewGridController(QObject):
         grid: QGridLayout,
         tile_size_px: int,
         grid_spacing: int,
-        cache: SegmentSearchCache,
+        search_cache: SegmentSearchCache,
         preview_cache: SegmentPreviewCache,
         on_media_selected,
         word_timeline: WordTimeline,
@@ -47,28 +48,24 @@ class SegmentViewGridController(QObject):
         self._grid = grid
         self._tile_size_px = int(tile_size_px)
         self._grid_spacing = int(grid_spacing)
-        self._cache = cache
+        self._search_cache = search_cache
+        self._preview_cache = preview_cache
         self._on_media_selected = on_media_selected
+        self._word_timeline = word_timeline
 
         self._tiles: list[QWidget] = []
+        # Base tiles survive a result clear, so results start at this index.
+        self._base_tile_count = 0
         self._segment: Segment
+        # A search outlives the segment it was started for, so the spinner can be
+        # restored when the user navigates back before the results arrive.
+        self._searching_segment_ids: set[int] = set()
 
-        self.search_input: QLineEdit | None = None
-        self.search_button = None
-        self.search_status = None
+        # Built by '_reset_tiles', like '_segment' above.
+        self._search_input: QLineEdit
+        self._search_button: QPushButton
+        self._search_status: QLabel
         self._media_preview = None
-        self._preview_cache = preview_cache
-
-        self._search = SegmentViewSearchController(
-            parent=self,
-            cache=self._cache,
-            word_timeline=word_timeline,
-            get_current_segment_id=lambda: self._segment.id,
-            clear_results=self._clear_results,
-            set_search_busy=self._set_search_busy,
-            apply_search_results=self._apply_search_results,
-            rebuild_grid=self.rebuild_grid,
-        )
 
     @staticmethod
     def _dispose_widget_preview(widget: QWidget) -> None:
@@ -80,26 +77,17 @@ class SegmentViewGridController(QObject):
         """Switch active segment and rebuild visible tiles for that segment."""
         self._segment = segment
         self._reset_tiles()
-        self.rebuild_grid()
+        self.relayout_grid()
 
-    def rebuild_grid(self) -> None:
-        """Re-layout currently built tiles based on viewport width."""
-        viewport_width = self._scroll.viewport().width()
-        cols = column_count_for_viewport(
-            viewport_width,
+    def relayout_grid(self) -> None:
+        """Rewrap the tiles already built into as many columns as now fit."""
+        relayout_grid(
+            self._tiles,
+            scroll=self._scroll,
+            grid=self._grid,
             tile_size_px=self._tile_size_px,
             grid_spacing=self._grid_spacing,
         )
-
-        while self._grid.count():
-            item = self._grid.takeAt(0)
-            if item is None:
-                break
-
-        for i, tile in enumerate(self._tiles):
-            row = i // cols
-            col = i % cols
-            self._grid.addWidget(tile, row, col)
         self._sync_media_tile()
 
     def _reset_tiles(self) -> None:
@@ -114,9 +102,7 @@ class SegmentViewGridController(QObject):
                 print(f"[segment_view_grid] tile teardown skipped: {e}")
 
         self._tiles = []
-        self.search_input = None
-        self.search_status = None
-        
+
         # Release backend-held media handles before removing temp cache files.
         SharedVideoPreviewBackend.instance().release_source()
 
@@ -127,15 +113,15 @@ class SegmentViewGridController(QObject):
             on_search_clicked=self._on_search_clicked,
         )
         self._tiles.extend(base.tiles)
-        self.search_input = base.search_input
-        self.search_button = base.search_button
-        self.search_status = base.search_status
+        self._base_tile_count = len(base.tiles)
+        self._search_input = base.search_input
+        self._search_button = base.search_button
+        self._search_status = base.search_status
         self._media_preview = base.media_preview
 
-        cached = self._cache.get(self._segment.id)
+        cached = self._search_cache.get(self._segment.id)
         if cached is not None:
-            if self.search_input is not None:
-                self.search_input.setText(cached.query)
+            self._search_input.setText(cached.query)
 
             for result in cached.results:
                 if not result.url or not result.thumb_bytes:
@@ -143,19 +129,19 @@ class SegmentViewGridController(QObject):
                 self._tiles.append(self._build_result_tile(result))
 
             if cached.results:
-                self.search_status.setText(
+                self._search_status.setText(
                     f"Showing {len(cached.results)} cached result(s)."
                 )
 
         # Always reflect current segment.media in the 'current' Media preview tile
         self._sync_media_tile()
 
-        if self._search.is_segment_searching(self._segment.id):
+        if self._segment.id in self._searching_segment_ids:
             self._set_search_busy(True, "Searching…")
 
     def _set_search_busy(self, busy: bool, status: str = "") -> None:
-        self.search_button.setEnabled(not busy)
-        self.search_status.setText(status)
+        self._search_button.setEnabled(not busy)
+        self._search_status.setText(status)
 
     def _build_result_tile(self, result: SearchResult) -> QWidget:
         return build_result_tile(
@@ -166,14 +152,9 @@ class SegmentViewGridController(QObject):
             on_select=self._select_media,
         )
 
-    def _apply_search_results(self, results: list[SearchResult]) -> int:
-        for result in results:
-            self._tiles.append(self._build_result_tile(result))
-        return len(results)
-
     def _clear_results(self) -> None:
         """Remove dynamic result tiles while keeping the base tiles."""
-        for w in self._tiles[self._BASE_TILE_COUNT :]:
+        for w in self._tiles[self._base_tile_count :]:
             try:
                 self._dispose_widget_preview(w)
                 w.hide()
@@ -181,7 +162,7 @@ class SegmentViewGridController(QObject):
                 w.deleteLater()
             except (RuntimeError, TypeError) as e:
                 print(f"[segment_view_grid] result tile teardown skipped: {e}")
-        self._tiles = self._tiles[: self._BASE_TILE_COUNT]
+        self._tiles = self._tiles[: self._base_tile_count]
         self._sync_media_tile()
 
     def release_preview_resources(self) -> None:
@@ -190,12 +171,73 @@ class SegmentViewGridController(QObject):
         SharedVideoPreviewBackend.instance().release_source()
 
     def _on_search_clicked(self) -> None:
-        self._search.on_search_clicked(
-            segment=self._segment,
-            search_input=self.search_input,
-            search_button=self.search_button,
-            search_status=self.search_status,
+        """Validate the query, then run the search off the UI thread."""
+        query = self._search_input.text().strip()
+        if not query:
+            self._set_search_busy(False, "Type a keyword first.")
+            return
+
+        settings = search_settings_state()
+        limit = settings.limit
+        enabled = set(settings.enabled)
+
+        # Should be unreachable, search settings should always have at least one enabled source
+        if not enabled:
+            self._set_search_busy(False, "Enable at least one supported source first.")
+            return
+
+        self._clear_results()
+        segment_id = self._segment.id
+        self._search_cache.set(segment_id, query=query, results=[])
+        self._set_search_busy(True, f"Searching “{query}”…")
+        self._searching_segment_ids.add(segment_id)
+
+        # Read off the model here: the thread body must not touch the UI or the model.
+        min_duration_s = segment_playback_duration(self._word_timeline, self._segment)
+
+        run_in_thread(
+            lambda: run_distributed_search(
+                query,
+                limit=limit,
+                enabled=enabled,
+                min_duration_s=min_duration_s,
+            ),
+            on_success=lambda results: self._on_search_finished(
+                segment_id, query, results
+            ),
+            on_error=lambda exc: self._on_search_failed(segment_id, exc),
         )
+
+    def _on_search_finished(
+        self, segment_id: int, query: str, results: list[SearchResult]
+    ) -> None:
+        self._searching_segment_ids.discard(segment_id)
+        self._search_cache.set(segment_id, query=query, results=results)
+        # The user may have navigated on while the search ran. The cache above keeps
+        # the results, so coming back to this segment restores them.
+        if self._segment.id != segment_id:
+            return
+
+        if not results:
+            self._set_search_busy(False, "No results (or blocked). Try another keyword.")
+            self.relayout_grid()
+            return
+
+        self._clear_results()
+        for result in results:
+            self._tiles.append(self._build_result_tile(result))
+        self._set_search_busy(
+            False,
+            f"Showing {len(results)}/{search_settings_state().limit} result(s).",
+        )
+        self.relayout_grid()
+
+    def _on_search_failed(self, segment_id: int, exc: Exception) -> None:
+        self._searching_segment_ids.discard(segment_id)
+        print(f"[segment_view_grid] search failed: {exc}")
+        if self._segment.id != segment_id:
+            return
+        self._set_search_busy(False, "Search failed. Try again.")
 
     def _select_media(self, result: SearchResult) -> None:
         self._segment.media = Media(
@@ -210,8 +252,6 @@ class SegmentViewGridController(QObject):
         sync_media_tile(
             segment=self._segment,
             media_preview=self._media_preview,
-            preview_cache=self._preview_cache,
-            tile_size_px=self._tile_size_px,
-            search_cache=self._cache,
+            search_cache=self._search_cache,
             thumb_bytes=thumb_bytes,
         )

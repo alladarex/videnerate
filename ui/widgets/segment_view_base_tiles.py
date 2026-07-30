@@ -52,7 +52,7 @@ def build_base_tiles(
         tile_size_px=tile_size_px,
         reserved=48,
         placeholder_text="No media selected",
-        cache=preview_cache,
+        preview_cache=preview_cache,
         parent=media_tile,
     )
     media_root.addWidget(media_body, 1)

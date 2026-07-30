@@ -10,7 +10,9 @@ from ui.cache.segment_preview_cache import SegmentPreviewCache, cached_file_for_
 from ui.styles.qss import MUTED_LABEL, SMALL_MUTED_LABEL
 from ui.widgets.preview_download import UrlDownloadBroker
 from ui.widgets.preview_playback import SharedVideoPreviewBackend
+from ui.utils.project_media_paths import load_media_file_thumbnail
 from ui.utils.tile_pixmap import inner_preview_edge, load_scaled_pixmap
+from ui.utils.ui_paths import icon_path
 
 _HOVER_DELAY_MS = 500
 
@@ -24,7 +26,7 @@ class HoverMediaPreview(QWidget):
         tile_size_px: int,
         reserved: int,
         placeholder_text: str,
-        cache: SegmentPreviewCache,
+        preview_cache: SegmentPreviewCache,
         parent: QWidget,
     ) -> None:
         super().__init__(parent)
@@ -35,7 +37,7 @@ class HoverMediaPreview(QWidget):
         self._tile_size_px = tile_size_px
         self._reserved = reserved
         self._placeholder_text = placeholder_text
-        self._cache = cache
+        self._preview_cache = preview_cache
 
         self._media_type: MediaType | None = None
         self._media_url: str | None = None
@@ -66,7 +68,7 @@ class HoverMediaPreview(QWidget):
         self._loading_overlay.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._loading_overlay.setStyleSheet("background: transparent;")
         self._loading_overlay.hide()
-        spinner_path = Path(__file__).resolve().parents[1] / "assets" / "icons" / "spinner.gif"
+        spinner_path = icon_path("spinner.gif")
         self._spinner_movie: QMovie | None = None
         if spinner_path.exists():
             self._spinner_movie = QMovie(str(spinner_path))
@@ -108,6 +110,31 @@ class HoverMediaPreview(QWidget):
         self._playback_path = self._resolve_playback_path(media_file_path=media.file_path)
         self._download_started = False
         self._show_thumbnail(thumbnail_bytes=thumbnail_bytes)
+
+    def show_media(self, media: Media, *, thumb_bytes: bytes | None = None) -> bool:
+        """Bind 'media' and draw the best preview at hand: saved file, then 'thumb_bytes'.
+
+        True means something was drawn and 'media' is now bound. False means neither
+        source produced an image and this widget was left untouched, so the caller
+        is free to put whatever it wants on it instead.
+        """
+        if media.file_path:
+            pixmap = load_media_file_thumbnail(
+                media=media,
+                tile_size_px=self._tile_size_px,
+                reserved=self._reserved,
+                preview_cache=self._preview_cache,
+            )
+            if pixmap is not None:
+                self.bind_from_media(media=media)
+                self.set_thumbnail_pixmap(pixmap)
+                return True
+
+        if thumb_bytes:
+            self.bind_from_media(media=media, thumbnail_bytes=thumb_bytes)
+            return True
+
+        return False
 
     def bind_from_search_url(
         self,
@@ -185,11 +212,13 @@ class HoverMediaPreview(QWidget):
 
     def _resolve_playback_path(self, *, media_file_path: str | None = None) -> str | None:
         if media_file_path:
-            path = self._cache.paths.file(media_file_path)
+            path = self._preview_cache.paths.file(media_file_path)
             if path.is_file():
                 return str(path)
         if self._media_url:
-            cached = cached_file_for_base(self._cache.cache_base_for_url(self._media_url))
+            cached = cached_file_for_base(
+                self._preview_cache.cache_base_for_url(self._media_url)
+            )
             if cached is not None:
                 return str(cached)
         return None
@@ -228,15 +257,15 @@ class HoverMediaPreview(QWidget):
         self._download_started = True
         UrlDownloadBroker.instance().request(
             url=self._media_url,
-            target_path=self._cache.cache_base_for_url(self._media_url),
-            callback=self._on_download_finished,
+            target_base=self._preview_cache.cache_base_for_url(self._media_url),
+            on_done=self._on_download_finished,
         )
 
-    def _on_download_finished(self, path: str, ok: bool) -> None:
+    def _on_download_finished(self, path: str | None) -> None:
         if self._disposed:
             return
         self._download_started = False
-        if not ok:
+        if path is None:
             self._hide_loading_overlay()
             self._root.setCurrentWidget(self._thumbnail)
             return

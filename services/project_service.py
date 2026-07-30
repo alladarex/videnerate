@@ -2,24 +2,20 @@ import json
 import re
 import hashlib
 import shutil
-import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 
 from core.json_io import save_json
-from core.media_ext import resolve_media_ext
 from core.models.project import Project
 from core.models.media import Media
 from config import PROJECTS_DIR
-from headers import BROWSER_HEADERS
-from core.project_paths import ProjectPaths
+from core.project_paths import INVALID_FILENAME_CHARS, ProjectPaths
 from core.word_tokenize import assert_segment_words_match_narration, normalize_text
 from services.alignment_service import align_project_audio
 from services.llm_service import generate_segment_search_plan
+from services.media_download import download_media
 from services.media_search import search_groups
 from services.voiceover_service import generate_voiceover_mp3
-
-INVALID_FOLDER_CHARS = set('<>:"/\\|?*')
 
 
 def validate_project_title_for_storage(title: str) -> str:
@@ -29,10 +25,10 @@ def validate_project_title_for_storage(title: str) -> str:
         raise ValueError("Project title cannot be empty.")
     if normalized.endswith("."):
         raise ValueError("Project title cannot end with a period.")
-    if any(char in INVALID_FOLDER_CHARS for char in normalized):
+    if any(char in INVALID_FILENAME_CHARS for char in normalized):
         raise ValueError(
             "Project title cannot contain invalid path characters: "
-            + " ".join(sorted(INVALID_FOLDER_CHARS))
+            + " ".join(sorted(INVALID_FILENAME_CHARS))
         )
     return normalized
 
@@ -149,18 +145,6 @@ def create_and_save_project(
     return project
 
 
-def _download_url_to_path(url: str, dest_base: Path, *, timeout_s: float = 20.0) -> Path:
-    """Download url to dest_base + resolved extension. Returns the final path."""
-    dest_base.parent.mkdir(parents=True, exist_ok=True)
-    req = urllib.request.Request(url, headers=BROWSER_HEADERS)
-    with urllib.request.urlopen(req, timeout=timeout_s) as resp:
-        data = resp.read()
-        ext = resolve_media_ext(url, resp.headers.get("Content-Type"))
-    dest = dest_base.with_suffix(ext)
-    dest.write_bytes(data)
-    return dest
-
-
 def _ensure_media_persisted(paths: ProjectPaths, segment_id: int, media: Media) -> None:
     """Ensure media is persisted under media/ by modifying media object.
 
@@ -202,7 +186,7 @@ def _ensure_media_persisted(paths: ProjectPaths, segment_id: int, media: Media) 
         url = media.url
         # Extension is added during download.
         base_name = f"{segment_id}_{hashlib.sha256(url.encode('utf-8')).hexdigest()[:16]}"
-        dest = _download_url_to_path(url, media_dir / base_name)
+        dest = download_media(url, media_dir / base_name)
         media.file_path = _rel_path(paths, dest)
         return
 

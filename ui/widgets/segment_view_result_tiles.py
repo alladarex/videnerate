@@ -120,7 +120,7 @@ class _HoverPlayableTile(_BaseResultTile):
             tile_size_px=size_px,
             reserved=40,
             placeholder_text=placeholder_text,
-            cache=preview_cache,
+            preview_cache=preview_cache,
             parent=self._content_host,
         )
         self._media_preview.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)

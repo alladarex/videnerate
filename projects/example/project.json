@@ -152,11 +152,10 @@
       "id": 12,
       "text": "even more persuasive than logical arguments in some situations",
       "media": {
-        "type": "video",
-        "file_path": "media/12_006d14d4b7ebb612.mp4",
-        "url": "https://cdn.pixabay.com/video/2025/10/22/311338_small.mp4",
-        "start_timestamp": 0.0,
-        "source": "Pixabay"
+        "type": "gif",
+        "file_path": "media/12_68100e2d3f86551a.gif",
+        "url": "https://media4.giphy.com/media/v1.Y2lkPTIwMjY3YmNlanJ3d2x4MnNhMDF5NWJpaXV4aDNkNzkyNWJqNnpzYWQzOWEwYXZnbiZlcD12MV9naWZzX3NlYXJjaCZjdD1n/cbm0J4DEIqKHsKxYHA/giphy.gif",
+        "source": "Giphy"
       },
       "word_start": 114,
       "word_end": 122

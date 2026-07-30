@@ -7,7 +7,6 @@ from ui.styles.qss import HIDE_SCROLLBARS, SEGMENT_TILE_EXTRA, TILE_FRAME
 from ui.widgets.hover_media_preview import HoverMediaPreview
 from ui.cache.segment_preview_cache import SegmentPreviewCache
 from ui.widgets.tile_frame import TileFrame
-from ui.utils.project_media_paths import load_media_file_thumbnail
 from ui.utils.tile_pixmap import (
     load_scaled_pixmap_from_path,
 )
@@ -64,8 +63,8 @@ class SegmentTile(TileFrame):
         self._media_preview = HoverMediaPreview(
             tile_size_px=self._size_px,
             reserved=40,
-            placeholder_text="Media",
-            cache=self._preview_cache,
+            placeholder_text="Thumbnail error",
+            preview_cache=self._preview_cache,
             parent=self,
         )
         self._media_preview.setObjectName("SegmentTileMediaPlaceholder")
@@ -110,9 +109,12 @@ class SegmentTile(TileFrame):
 
         Priority (first match wins):
         1. Empty state icon - segment has no media assigned yet.
-        2. Saved file on disk - media persisted to project.json (file_path).
-        3. Fresh preview bytes - set from runtime selection (self._thumb_bytes).
-        4. Fallback label - media exists but no drawable preview is available.
+        2. Saved file on disk, then 'self._thumb_bytes' - see 'show_media'.
+        3. Fallback label - media exists but no drawable preview is available.
+
+        Unlike the segment view, this tile keeps the bytes it was handed when the
+        media was attached, so every redraw can reuse them and it never has to ask
+        a cache for them back.
         """
 
         media = self._segment.media
@@ -128,29 +130,10 @@ class SegmentTile(TileFrame):
                 self._media_preview.set_placeholder_text("+")
             return
 
-        # 2) Saved file on disk - media persisted in project.json (file_path)
-        if getattr(media, "file_path", None):
-            pixmap = load_media_file_thumbnail(
-                media=media,
-                tile_size_px=self._size_px,
-                reserved=40,
-                preview_cache=self._preview_cache,
-            )
-            if pixmap is not None:
-                self._media_preview.bind_from_media(media=media)
-                self._media_preview.set_thumbnail_pixmap(pixmap)
-                return
-
-        # 3) Fresh preview bytes - set from runtime selection (self._thumb_bytes)
-        if self._thumb_bytes:
-            self._media_preview.bind_from_media(
-                media=media,
-                thumbnail_bytes=self._thumb_bytes,
-            )
+        # 2) Saved file on disk, then the bytes from the last runtime selection
+        if self._media_preview.show_media(media, thumb_bytes=self._thumb_bytes):
             return
 
-        # 4) Fallback label - media exists but no drawable preview is available
+        # 3) Fallback label - media exists but no drawable preview is available
         self._media_preview.bind_from_media(media=media)
-        self._media_preview.set_placeholder_text("Media")
-
-
+        self._media_preview.set_placeholder_text("Thumbnail error")

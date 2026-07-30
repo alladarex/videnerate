@@ -22,7 +22,7 @@ from ui.dialogs.export_dialog import ExportDialog
 from ui.dialogs.missing_media_dialog import MissingMediaDialog
 from ui.styles.qss import ACTION_BUTTON, TITLE_LABEL, top_bar_style
 from ui.cache.segment_preview_cache import SegmentPreviewCache
-from ui.utils.grid_layout import column_count_for_viewport
+from ui.utils.grid_layout import relayout_grid
 from ui.widgets.segment_tile import SegmentTile
 from ui.widgets.segment_view import SegmentView
 from ui.widgets.voiceover_playback import VoiceoverPlaybackController
@@ -176,7 +176,7 @@ class ProjectWindow(QMainWindow):
         self._segment_tile_by_id = {
             seg.id: tile for seg, tile in zip(self._project.segments, self._segment_tiles)
         }
-        self._rebuild_segments_grid()
+        self._relayout_segments_grid()
         self._wire_segment_tile_clicks()
 
         self._segments_scroll.setWidget(self._segments_grid_host)
@@ -201,29 +201,18 @@ class ProjectWindow(QMainWindow):
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        self._rebuild_segments_grid()
+        self._relayout_segments_grid()
 
-    def _rebuild_segments_grid(self) -> None:
+    def _relayout_segments_grid(self) -> None:
         if self._segments_scroll is None or self._segments_grid is None:
             return
-
-        # Clear layout items (widgets are kept alive in self._segment_tiles)
-        while self._segments_grid.count():
-            item = self._segments_grid.takeAt(0)
-            if item is None:
-                break
-
-        viewport_width = self._segments_scroll.viewport().width()
-        cols = column_count_for_viewport(
-            viewport_width,
+        relayout_grid(
+            self._segment_tiles,
+            scroll=self._segments_scroll,
+            grid=self._segments_grid,
             tile_size_px=self._tile_size_px,
             grid_spacing=self._grid_spacing,
         )
-
-        for i, tile in enumerate(self._segment_tiles):
-            row = i // cols
-            col = i % cols
-            self._segments_grid.addWidget(tile, row, col)
 
     def _wire_segment_tile_clicks(self) -> None:
         """Connect each segment tile click to opening detail view."""

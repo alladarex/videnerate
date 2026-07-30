@@ -68,7 +68,7 @@ class SegmentView(QWidget):
         self._scroll: QScrollArea | None = None
         self._grid_host: QWidget | None = None
         self._grid: QGridLayout | None = None
-        self._cache = SegmentSearchCache()
+        self._search_cache = SegmentSearchCache()
         self._grid_controller: SegmentViewGridController
 
         self._nav_prev: QPushButton | None = None
@@ -145,7 +145,7 @@ class SegmentView(QWidget):
             grid=self._grid,
             tile_size_px=self._tile_size_px,
             grid_spacing=self._grid_spacing,
-            cache=self._cache,
+            search_cache=self._search_cache,
             preview_cache=preview_cache,
             on_media_selected=lambda seg_id, b: self.media_selected.emit(seg_id, b),
             word_timeline=self._word_timeline,
@@ -227,7 +227,7 @@ class SegmentView(QWidget):
         root.addWidget(self._scroll, 1)
         root.addWidget(bottom_row)
 
-        self._grid_controller.rebuild_grid()
+        self._grid_controller.relayout_grid()
         self._refresh_nav_display()
 
     @property
@@ -265,13 +265,13 @@ class SegmentView(QWidget):
 
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
-        self._grid_controller.rebuild_grid()
+        self._grid_controller.relayout_grid()
         # Needed if segment view is accessible without a prior mouse click in project view
         # self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
-        self._grid_controller.rebuild_grid()
+        self._grid_controller.relayout_grid()
 
     def release_preview_resources(self) -> None:
         """Release transient preview resources for segment view."""

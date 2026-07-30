@@ -17,6 +17,21 @@ EXPORT_FILENAME = "export.mp4"
 EXPORT_TMP_FILENAME = "export.tmp.mp4"
 EXPORT_AUDIO_TMP_FILENAME = ".export_audio.m4a"
 
+# Characters Windows rejects in a file or folder name. Kept as one string so the
+# code that builds a name and the code that rejects one cannot drift apart.
+INVALID_FILENAME_CHARS = '<>:"/\\|?*'
+
+
+def sanitize_filename(name: str) -> str:
+    """Replace every character a filename cannot hold with an underscore.
+
+    Returns an empty string for a blank name, so a caller that needs a name
+    regardless supplies its own fallback.
+    """
+    return "".join(
+        "_" if char in INVALID_FILENAME_CHARS else char for char in name.strip()
+    )
+
 
 @dataclass(frozen=True)
 class ProjectPaths:

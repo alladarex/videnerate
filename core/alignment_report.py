@@ -1,17 +1,11 @@
 """Write one text report file per Whisper alignment run."""
-import re
 from datetime import datetime
 from pathlib import Path
 
 from config import APP_DIR
-from core.project_paths import ProjectPaths
+from core.project_paths import ProjectPaths, sanitize_filename
 
 REPORT_DIR = APP_DIR / "logs" / "alignment"
-
-
-def _safe_name(name: str) -> str:
-    cleaned = re.sub(r'[<>:"/\\|?*]', "_", name.strip())
-    return cleaned or "project"
 
 
 def write_alignment_report(
@@ -23,7 +17,7 @@ def write_alignment_report(
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     status = "SUCCESS" if success else "FAILURE"
-    filename = f"{stamp}_{_safe_name(paths.root.name)}_{status}.txt"
+    filename = f"{stamp}_{sanitize_filename(paths.root.name) or 'project'}_{status}.txt"
     report_path = REPORT_DIR / filename
 
     header_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
