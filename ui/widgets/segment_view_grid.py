@@ -4,7 +4,7 @@ This module owns the dynamic tile area inside segment detail view:
 - builds/restores base and search result tiles
 - runs media search off the UI thread and turns the results into tiles
 - binds tile clicks to segment media selection
-- keeps the media preview tile synchronized with model/cache state
+- keeps the media preview tile synchronized with the active segment's media
 """
 
 from PySide6.QtCore import QObject
@@ -18,9 +18,9 @@ from services.search_common import SearchResult
 from ui.utils.background_task import run_in_thread
 from ui.utils.grid_layout import relayout_grid
 from ui.cache.segment_search_cache import SegmentSearchCache
+from ui.widgets.hover_media_preview import HoverMediaPreview
 from ui.widgets.search_settings import search_settings_state
 from ui.widgets.segment_view_base_tiles import build_base_tiles
-from ui.widgets.segment_view_media_tile_sync import sync_media_tile
 from ui.cache.segment_preview_cache import SegmentPreviewCache
 from ui.widgets.preview_playback import SharedVideoPreviewBackend
 from ui.widgets.segment_view_result_tiles import build_result_tile
@@ -60,12 +60,20 @@ class SegmentViewGridController(QObject):
         # A search outlives the segment it was started for, so the spinner can be
         # restored when the user navigates back before the results arrive.
         self._searching_segment_ids: set[int] = set()
+        # Thumbnail image of the media attached to each segment, by segment id.
+        # Clicking a search result stores only the media's url. The file itself is
+        # downloaded when the project is saved, so until then there is nothing on
+        # disk to draw and these bytes are the Media tile's only picture.
+        # Kept here rather than on the preview widget because the segment view
+        # rebuilds that widget every time the user moves to another segment.
+        self._attached_thumb_bytes: dict[int, bytes] = {}
 
         # Built by '_reset_tiles', like '_segment' above.
         self._search_input: QLineEdit
         self._search_button: QPushButton
         self._search_status: QLabel
-        self._media_preview = None
+        # Assigned by the first '_reset_tiles', so None until 'set_segment' runs.
+        self._media_preview: HoverMediaPreview | None = None
 
     @staticmethod
     def _dispose_widget_preview(widget: QWidget) -> None:
@@ -243,15 +251,40 @@ class SegmentViewGridController(QObject):
         self._segment.media = Media(
             result.media_type, url=result.url, source=result.source
         )
+        self._attached_thumb_bytes[self._segment.id] = result.thumb_bytes
         self._on_media_selected(self._segment.id, result.thumb_bytes)
-        self._sync_media_tile(result.thumb_bytes)
+        self._sync_media_tile()
 
-    def _sync_media_tile(self, thumb_bytes: bytes | None = None) -> None:
-        if self._media_preview is None:
+    def _sync_media_tile(self) -> None:
+        """Draw the Media tile's preview from the active segment's media.
+
+        Priority (first match wins):
+        1. Empty state text, no media is attached yet.
+        2. Saved file on disk, then the thumbnail bytes kept from when the media
+           was attached, see 'show_media'.
+        3. Fallback label, media is attached but nothing drawable came out.
+
+        The project grid runs the same ladder in 'SegmentTile.refresh_media'. It
+        keeps its remembered bytes in a plain field, because it has one tile per
+        segment, while one preview widget serves every segment here.
+        """
+        preview = self._media_preview
+        if preview is None:
             return
-        sync_media_tile(
-            segment=self._segment,
-            media_preview=self._media_preview,
-            search_cache=self._search_cache,
-            thumb_bytes=thumb_bytes,
-        )
+        media = self._segment.media
+
+        # 1) Empty state text, no media is attached yet
+        if media is None:
+            preview.clear_media()
+            preview.set_placeholder_text("No media selected")
+            return
+
+        # 2) Saved file on disk, then the bytes kept from when the media was attached
+        if preview.show_media(
+            media, thumb_bytes=self._attached_thumb_bytes.get(self._segment.id)
+        ):
+            return
+
+        # 3) Fallback label, media is attached but nothing drawable came out
+        preview.bind_from_media(media=media)
+        preview.set_placeholder_text("Thumbnail error")

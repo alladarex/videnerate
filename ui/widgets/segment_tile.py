@@ -105,21 +105,23 @@ class SegmentTile(TileFrame):
         self.refresh_media()
 
     def refresh_media(self) -> None:
-        """Draw this segment tile's media preview.
+        """Draw this tile's preview from the segment's media.
 
         Priority (first match wins):
-        1. Empty state icon - segment has no media assigned yet.
-        2. Saved file on disk, then 'self._thumb_bytes' - see 'show_media'.
-        3. Fallback label - media exists but no drawable preview is available.
+        1. Empty state icon, no media is attached yet.
+        2. Saved file on disk, then the thumbnail bytes kept from when the media
+           was attached, see 'show_media'.
+        3. Fallback label, media is attached but nothing drawable came out.
 
-        Unlike the segment view, this tile keeps the bytes it was handed when the
-        media was attached, so every redraw can reuse them and it never has to ask
-        a cache for them back.
+        The segment view runs the same ladder in
+        'SegmentViewGridController._sync_media_tile'. It keeps its remembered bytes
+        per segment id, because one preview widget serves every segment there, while
+        this view has one tile per segment and can hold them in a plain field.
         """
 
         media = self._segment.media
 
-        # 1) Empty state icon - segment has no media assigned yet
+        # 1) Empty state icon, no media is attached yet
         if media is None:
             plus_path = icon_path("plus.png")
             icon_edge = max(1, int(self._size_px * 0.35))
@@ -130,10 +132,10 @@ class SegmentTile(TileFrame):
                 self._media_preview.set_placeholder_text("+")
             return
 
-        # 2) Saved file on disk, then the bytes from the last runtime selection
+        # 2) Saved file on disk, then the bytes kept from when the media was attached
         if self._media_preview.show_media(media, thumb_bytes=self._thumb_bytes):
             return
 
-        # 3) Fallback label - media exists but no drawable preview is available
+        # 3) Fallback label, media is attached but nothing drawable came out
         self._media_preview.bind_from_media(media=media)
         self._media_preview.set_placeholder_text("Thumbnail error")

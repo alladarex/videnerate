@@ -112,29 +112,37 @@ class HoverMediaPreview(QWidget):
         self._show_thumbnail(thumbnail_bytes=thumbnail_bytes)
 
     def show_media(self, media: Media, *, thumb_bytes: bytes | None = None) -> bool:
-        """Bind 'media' and draw the best preview at hand: saved file, then 'thumb_bytes'.
+        """Bind 'media' and draw it, the shared middle step of both callers' ladders.
 
-        True means something was drawn and 'media' is now bound. False means neither
-        source produced an image and this widget was left untouched, so the caller
-        is free to put whatever it wants on it instead.
+        Priority (first match wins):
+        1. Saved file on disk, which exists once the project has been saved.
+        2. 'thumb_bytes', the thumbnail the caller kept from when the media
+           was attached.
+
+        True means an image was drawn and 'media' is now bound. False means neither
+        source decoded into one and this widget was left untouched, so the caller is
+        free to fall back to whatever it wants. Both sources are decoded here.
         """
-        if media.file_path:
-            pixmap = load_media_file_thumbnail(
-                media=media,
-                tile_size_px=self._tile_size_px,
-                reserved=self._reserved,
-                preview_cache=self._preview_cache,
-            )
-            if pixmap is not None:
-                self.bind_from_media(media=media)
-                self.set_thumbnail_pixmap(pixmap)
-                return True
+        # 1) Saved file on disk, which exists once the project has been saved
+        pixmap = load_media_file_thumbnail(
+            media=media,
+            tile_size_px=self._tile_size_px,
+            reserved=self._reserved,
+            preview_cache=self._preview_cache,
+        )
 
-        if thumb_bytes:
-            self.bind_from_media(media=media, thumbnail_bytes=thumb_bytes)
-            return True
+        # 2) The thumbnail bytes the caller kept from when the media was attached
+        if pixmap is None and thumb_bytes:
+            target = inner_preview_edge(self._tile_size_px, reserved=self._reserved)
+            pixmap = load_scaled_pixmap(thumb_bytes, target)
 
-        return False
+        # Neither decoded, so leave the widget alone and let the caller fall back
+        if pixmap is None:
+            return False
+
+        self.bind_from_media(media=media)
+        self.set_thumbnail_pixmap(pixmap)
+        return True
 
     def bind_from_search_url(
         self,

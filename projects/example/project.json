@@ -164,11 +164,10 @@
       "id": 13,
       "text": "because people connect more easily with stories and specific instances than with abstract reasoning.",
       "media": {
-        "type": "video",
-        "file_path": "media/13_5d8e833d0cdcbf1e.mp4",
-        "url": null,
-        "start_timestamp": 0.0,
-        "source": "Pixabay"
+        "type": "image",
+        "file_path": "media/13_d349622694866a78.jpg",
+        "url": "https://betterwithcats.net/wp-content/uploads/2022/08/cat-is-laying-on-a-old-wooden-table.jpg",
+        "source": "https://printables.uk.com/cat-coloring-pages-free-printable/"
       },
       "word_start": 123,
       "word_end": 136

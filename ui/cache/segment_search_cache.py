@@ -5,7 +5,7 @@ from services.search_common import SearchResult
 
 @dataclass
 class SegmentSearchState:
-    """Cached search query and fetched thumbnail data for one segment."""
+    """The query last searched for one segment and the results it returned."""
 
     query: str
     results: list[SearchResult]
@@ -27,13 +27,3 @@ class SegmentSearchCache:
             query=query,
             results=list(results),
         )
-
-    def thumb_bytes_for_url(self, segment_id: int, url: str) -> bytes | None:
-        """Return cached search thumbnail bytes for a result URL, if any."""
-        state = self.get(segment_id)
-        if state is None:
-            return None
-        for result in state.results:
-            if result.url == url:
-                return bytes(result.thumb_bytes)
-        return None
