@@ -260,13 +260,13 @@ class SegmentViewGridController(QObject):
 
         Priority (first match wins):
         1. Empty state text, no media is attached yet.
-        2. Saved file on disk, then the thumbnail bytes kept from when the media
-           was attached, see 'show_media'.
-        3. Fallback label, media is attached but nothing drawable came out.
+        2. The media itself, see 'show_media', which draws it or falls back 
+           to a "Thumbnail error" label.
 
-        The project grid runs the same ladder in 'SegmentTile.refresh_media'. It
-        keeps its remembered bytes in a plain field, because it has one tile per
-        segment, while one preview widget serves every segment here.
+        The project grid runs the same ladder in 'SegmentTile.refresh_media'. 
+        It can keep its remembered bytes in a plain field because it builds one tile 
+        per segment. This view reuses a single preview widget for every segment, 
+        so its bytes have to be stored per segment id instead.
         """
         preview = self._media_preview
         if preview is None:
@@ -279,12 +279,7 @@ class SegmentViewGridController(QObject):
             preview.set_placeholder_text("No media selected")
             return
 
-        # 2) Saved file on disk, then the bytes kept from when the media was attached
-        if preview.show_media(
+        # 2) The media itself, drawn from disk or from the bytes kept when it was attached
+        preview.show_media(
             media, thumb_bytes=self._attached_thumb_bytes.get(self._segment.id)
-        ):
-            return
-
-        # 3) Fallback label, media is attached but nothing drawable came out
-        preview.bind_from_media(media=media)
-        preview.set_placeholder_text("Thumbnail error")
+        )

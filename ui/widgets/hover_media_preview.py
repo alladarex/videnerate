@@ -86,44 +86,19 @@ class HoverMediaPreview(QWidget):
 
     def clear_media(self) -> None:
         """Clear bound media when the segment has no selection (placeholder only)."""
-        self._stop_preview()
-        self._media_type = None
-        self._media_url = None
-        self._playback_path = None
-        self._download_started = False
+        self._bind(media_type=None, media_url=None)
         self._show_thumbnail()
 
-    def bind_from_media(
-        self,
-        *,
-        media: Media,
-        thumbnail_bytes: bytes | None = None,
-    ) -> None:
-        """Bind preview for a segment's chosen Media object.
-
-        Playback path: on-disk media.file_path if present, else preview-cache path
-        for media.url (see _resolve_playback_path).
-        """
-        self._stop_preview()
-        self._media_type = media.media_type
-        self._media_url = media.url
-        self._playback_path = self._resolve_playback_path(media_file_path=media.file_path)
-        self._download_started = False
-        self._show_thumbnail(thumbnail_bytes=thumbnail_bytes)
-
-    def show_media(self, media: Media, *, thumb_bytes: bytes | None = None) -> bool:
-        """Bind 'media' and draw it, the shared middle step of both callers' ladders.
+    def show_media(self, media: Media, *, thumb_bytes: bytes | None = None) -> None:
+        """Bind 'media' and draw it.
 
         Priority (first match wins):
         1. Saved file on disk, which exists once the project has been saved.
-        2. 'thumb_bytes', the thumbnail the caller kept from when the media
-           was attached.
+        2. 'thumb_bytes', the thumbnail from the caller
 
-        True means an image was drawn and 'media' is now bound. False means neither
-        source decoded into one and this widget was left untouched, so the caller is
-        free to fall back to whatever it wants. Both sources are decoded here.
+        If neither source produces an image the tile shows "Thumbnail error".
         """
-        # 1) Saved file on disk, which exists once the project has been saved
+        # 1) The image file in the project folder, which only exists after a save
         pixmap = load_media_file_thumbnail(
             media=media,
             tile_size_px=self._tile_size_px,
@@ -131,36 +106,31 @@ class HoverMediaPreview(QWidget):
             preview_cache=self._preview_cache,
         )
 
-        # 2) The thumbnail bytes the caller kept from when the media was attached
+        # 2) The thumbnail the view saved when this media was picked from search results
         if pixmap is None and thumb_bytes:
             target = inner_preview_edge(self._tile_size_px, reserved=self._reserved)
             pixmap = load_scaled_pixmap(thumb_bytes, target)
 
-        # Neither decoded, so leave the widget alone and let the caller fall back
+        self._bind(
+            media_type=media.media_type,
+            media_url=media.url,
+            file_path=media.file_path,
+        )
         if pixmap is None:
-            return False
+            self.set_placeholder_text("Thumbnail error")
+        else:
+            self.set_thumbnail_pixmap(pixmap)
 
-        self.bind_from_media(media=media)
-        self.set_thumbnail_pixmap(pixmap)
-        return True
+    def bind_from_search_url(self, *, media_type: MediaType, media_url: str) -> None:
+        """Make a search-result tile hoverable.
 
-    def bind_from_search_url(
-        self,
-        *,
-        media_type: MediaType,
-        media_url: str,
-        thumbnail_bytes: bytes | None = None,
-    ) -> None:
-        """Bind preview for a search-result tile.
-
-        Only URL-based hover/download is available (no Media model).
+        Only URL-based hover and download work here, there is no Media model and so
+        no local file to fall back on. The thumbnail is not passed in because the
+        tile gets it a moment later: 'build_result_tile' hands over the
+        'SearchResult.thumb_bytes' that the search provider already downloaded.
         """
-        self._stop_preview()
-        self._media_type = media_type
-        self._media_url = media_url
-        self._playback_path = self._resolve_playback_path()
-        self._download_started = False
-        self._show_thumbnail(thumbnail_bytes=thumbnail_bytes)
+        self._bind(media_type=media_type, media_url=media_url)
+        self._show_thumbnail()
 
     def set_placeholder_text(self, text: str) -> None:
         self._placeholder_text = text
@@ -201,6 +171,27 @@ class HoverMediaPreview(QWidget):
     def is_hovered(self) -> bool:
         return self._hovered
 
+    def _bind(
+        self,
+        *,
+        media_type: MediaType | None,
+        media_url: str | None,
+        file_path: str | None = None,
+    ) -> None:
+        """Remember which media this tile shows, so hovering knows what to play.
+
+        This only stores values, it never draws. Whoever calls it draws afterwards
+        Passing no type and no url leaves the tile showing nothing, 
+        which is what 'clear_media' wants.
+        """
+        self._stop_preview()
+        self._media_type = media_type
+        self._media_url = media_url
+        self._playback_path = self._resolve_playback_path(
+            media_url=media_url, file_path=file_path
+        )
+        self._download_started = False
+
     def _show_thumbnail(
         self,
         *,
@@ -218,14 +209,21 @@ class HoverMediaPreview(QWidget):
             self._thumbnail.setText(self._placeholder_text)
         self._root.setCurrentWidget(self._thumbnail)
 
-    def _resolve_playback_path(self, *, media_file_path: str | None = None) -> str | None:
-        if media_file_path:
-            path = self._preview_cache.paths.file(media_file_path)
+    def _resolve_playback_path(
+        self, *, media_url: str | None, file_path: str | None
+    ) -> str | None:
+        """Find a local file to play, or None when hovering will have to download one.
+
+        Both inputs are parameters rather than fields, so this cannot read state that
+        its caller is halfway through updating.
+        """
+        if file_path:
+            path = self._preview_cache.paths.file(file_path)
             if path.is_file():
                 return str(path)
-        if self._media_url:
+        if media_url:
             cached = cached_file_for_base(
-                self._preview_cache.cache_base_for_url(self._media_url)
+                self._preview_cache.cache_base_for_url(media_url)
             )
             if cached is not None:
                 return str(cached)

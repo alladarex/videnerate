@@ -109,14 +109,13 @@ class SegmentTile(TileFrame):
 
         Priority (first match wins):
         1. Empty state icon, no media is attached yet.
-        2. Saved file on disk, then the thumbnail bytes kept from when the media
-           was attached, see 'show_media'.
-        3. Fallback label, media is attached but nothing drawable came out.
+        2. The media itself, see 'show_media', which draws it or falls back
+           to a "Thumbnail error" label.
 
-        The segment view runs the same ladder in
-        'SegmentViewGridController._sync_media_tile'. It keeps its remembered bytes
-        per segment id, because one preview widget serves every segment there, while
-        this view has one tile per segment and can hold them in a plain field.
+        The segment view runs the same ladder in 'SegmentViewGridController._sync_media_tile'.
+        It has to store its remembered bytes per segment id because it reuses a single
+        preview widget for every segment. This view builds one tile per segment, 
+        so a plain field is enough.
         """
 
         media = self._segment.media
@@ -132,10 +131,5 @@ class SegmentTile(TileFrame):
                 self._media_preview.set_placeholder_text("+")
             return
 
-        # 2) Saved file on disk, then the bytes kept from when the media was attached
-        if self._media_preview.show_media(media, thumb_bytes=self._thumb_bytes):
-            return
-
-        # 3) Fallback label, media is attached but nothing drawable came out
-        self._media_preview.bind_from_media(media=media)
-        self._media_preview.set_placeholder_text("Thumbnail error")
+        # 2) The media itself, drawn from disk or from the bytes kept when it was attached
+        self._media_preview.show_media(media, thumb_bytes=self._thumb_bytes)
