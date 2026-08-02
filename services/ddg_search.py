@@ -11,11 +11,11 @@ from services.search_common import (
     SearchResult,
     fetch_bytes,
     fetch_json,
+    is_valid_http_url,
 )
 
-# Log tag only. Unlike the stock providers, the attribution this module returns per
-# result is that result's own page URL, never this constant.
-SOURCE = "web"
+# Log tag only. Each result is credited to its own page url, never to this.
+_LOG_TAG = "web"
 
 
 def _ddg_vqd_from_html(html: str) -> str | None:
@@ -38,9 +38,7 @@ def fetch_web_image_results(query: str, *, limit: int = 10) -> list[SearchResult
     if not q:
         return []
 
-    init_url = "https://duckduckgo.com/?" + urllib.parse.urlencode(
-        {"q": q, "ia": "images"}
-    )
+    init_url = "https://duckduckgo.com/?" + urllib.parse.urlencode({"q": q, "ia": "images"})
     init_req = urllib.request.Request(init_url, headers=BROWSER_HEADERS)
     with urllib.request.urlopen(init_req, timeout=HTTP_TIMEOUT_S) as resp:
         init_html = resp.read().decode("utf-8", errors="ignore")
@@ -62,35 +60,32 @@ def fetch_web_image_results(query: str, *, limit: int = 10) -> list[SearchResult
 
     results = payload.get("results") or []
     items: list[tuple[str, str, str]] = []
-    for r in results:
-        if not isinstance(r, dict):
+    for result in results:
+        if not isinstance(result, dict):
             continue
-        image_url = r.get("image")
-        thumb_url = r.get("thumbnail") or r.get("image")
-        source_url = r.get("url")
+        image_url = result.get("image")
+        thumb_url = result.get("thumbnail") or result.get("image")
+        page_url = result.get("url")
         if not (
-            isinstance(image_url, str)
-            and image_url.startswith("http")
-            and isinstance(thumb_url, str)
-            and thumb_url.startswith("http")
-            and isinstance(source_url, str)
-            and source_url.startswith("http")
+            is_valid_http_url(image_url)
+            and is_valid_http_url(thumb_url)
+            and is_valid_http_url(page_url)
         ):
             continue
-        items.append((image_url, thumb_url, source_url))
+        items.append((image_url, thumb_url, page_url))
         if len(items) >= limit:
             break
 
     out: list[SearchResult] = []
-    for image_url, thumb_url, source_url in items:
-        thumb_bytes = fetch_bytes(thumb_url, headers=BROWSER_HEADERS, source=SOURCE)
+    for image_url, thumb_url, page_url in items:
+        thumb_bytes = fetch_bytes(thumb_url, headers=BROWSER_HEADERS, log_tag=_LOG_TAG)
         if thumb_bytes:
             out.append(
                 SearchResult(
                     media_type=MediaType.IMAGE,
                     url=image_url,
                     thumb_bytes=thumb_bytes,
-                    source=source_url,
+                    source=page_url,
                 )
             )
 

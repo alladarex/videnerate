@@ -37,7 +37,5 @@ def resolve_media_ext(url: str, content_type: str | None = None) -> str:
     """
     ext = ext_from_url_path(url) or ext_from_content_type(content_type)
     if not ext:
-        raise ValueError(
-            f"Unrecognized media type for {url!r} (Content-Type: {content_type!r})"
-        )
+        raise ValueError(f"Unrecognized media type for {url!r} (Content-Type: {content_type!r})")
     return ext

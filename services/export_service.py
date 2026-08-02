@@ -1,9 +1,9 @@
 """Render the project to an MP4 by stitching together segment media with the voiceover."""
 
 import warnings
-from threading import Event
 from collections.abc import Callable
 from pathlib import Path
+from threading import Event
 
 from moviepy import (
     AudioFileClip,
@@ -118,7 +118,7 @@ def _add_source_overlay(
     if lower.startswith(("http://", "https://")):
         for prefix in _HTTP_PREFIXES:
             if lower.startswith(prefix):
-                display = display[len(prefix):]
+                display = display[len(prefix) :]
                 break
 
     text = (

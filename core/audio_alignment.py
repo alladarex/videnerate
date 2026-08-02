@@ -19,7 +19,7 @@ _MIN_ASR_MATCH_RATIO = 0.75
 _MAX_FIRST_WORD_START_S = 3.0
 
 
-def get_audio_duration_seconds(audio_path: Path) -> float:
+def audio_duration_s(audio_path: Path) -> float:
     audio = AudioSegment.from_file(audio_path)
     return len(audio) / 1000.0
 
@@ -57,7 +57,7 @@ def _transcribe_word_timestamps(
                 end = start + 0.08
             asr_tokens.append((tokens[0], start, end))
 
-    duration = float(info.duration) if info.duration else get_audio_duration_seconds(audio_path)
+    duration = float(info.duration) if info.duration else audio_duration_s(audio_path)
     return asr_tokens, duration
 
 
@@ -132,7 +132,7 @@ def _timeline_from_asr(
     return WordTimeline(audio_duration=duration, words=adjusted), matched / len(ref_words)
 
 
-def _timeline_acceptable(timeline: WordTimeline, match_ratio: float) -> bool:
+def _is_timeline_acceptable(timeline: WordTimeline, match_ratio: float) -> bool:
     return (
         bool(timeline.words)
         and match_ratio >= _MIN_ASR_MATCH_RATIO
@@ -181,7 +181,7 @@ def build_word_timeline(
     if not ref_words:
         raise ValueError("Narration has no words after tokenization")
 
-    duration = get_audio_duration_seconds(audio_path)
+    duration = audio_duration_s(audio_path)
     base_lines = _report_base_lines(audio_path, len(ref_words), duration)
 
     try:
@@ -191,7 +191,7 @@ def build_word_timeline(
         )
         duration = max(duration, whisper_duration)
         timeline, match_ratio = _timeline_from_asr(ref_words, asr_tokens, duration)
-        if _timeline_acceptable(timeline, match_ratio):
+        if _is_timeline_acceptable(timeline, match_ratio):
             write_alignment_report(
                 paths,
                 success=True,

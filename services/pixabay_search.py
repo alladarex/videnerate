@@ -1,4 +1,5 @@
 import urllib.parse
+from typing import Any
 
 from config import PIXABAY_API_KEY
 from core.models.media import MediaType
@@ -14,21 +15,21 @@ from services.search_common import (
 )
 
 SOURCE = "Pixabay"
-_PIXABAY_MIN_PER_PAGE = 3 # Pixabay requires at least 3 results
+_PIXABAY_MIN_PER_PAGE = 3  # Pixabay requires at least 3 results
 _PIXABAY_MAX_PER_PAGE = 200
 _VIDEO_QUALITIES = ("large", "medium", "small", "tiny")
 
 
-def _pick_image_urls(result: dict) -> tuple[str | None, str | None]:
-    """Return (source_url, thumb_url) for an image search result."""
-    source_url = result.get("largeImageURL")
+def _pick_image_urls(result: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Return (image_url, thumb_url) for an image search result."""
+    image_url = result.get("largeImageURL")
     thumb_url = result.get("webformatURL")
-    if not is_valid_http_url(source_url) or not is_valid_http_url(thumb_url):
+    if not is_valid_http_url(image_url) or not is_valid_http_url(thumb_url):
         return (None, None)
-    return (source_url, thumb_url)
+    return (image_url, thumb_url)
 
 
-def _pick_video_urls(result: dict) -> tuple[str | None, str | None]:
+def _pick_video_urls(result: dict[str, Any]) -> tuple[str | None, str | None]:
     """Return (video_url, thumb_url) for a video search result.
 
     Only picks streams with short edge in [720, 1080], skips videos with no
@@ -86,8 +87,8 @@ def fetch_pixabay_image_results(query: str, *, limit: int = 10) -> list[SearchRe
     )
     try:
         payload = fetch_json(url, headers=VIDENERATE_HEADERS)
-    except Exception as e:
-        print(f"[{SOURCE}] fetch_pixabay_image_results failed for query '{q}': {e}")
+    except Exception as exc:
+        print(f"[{SOURCE}] fetch_pixabay_image_results failed for query '{q}': {exc}")
         return []
 
     out: list[SearchResult] = []
@@ -97,7 +98,7 @@ def fetch_pixabay_image_results(query: str, *, limit: int = 10) -> list[SearchRe
         image_url, thumb_url = _pick_image_urls(result)
         if not image_url or not thumb_url:
             continue
-        thumb_bytes = fetch_bytes(thumb_url, headers=VIDENERATE_HEADERS, source=SOURCE)
+        thumb_bytes = fetch_bytes(thumb_url, headers=VIDENERATE_HEADERS, log_tag=SOURCE)
         if thumb_bytes:
             out.append(
                 SearchResult(
@@ -139,8 +140,8 @@ def fetch_pixabay_video_results(
     )
     try:
         payload = fetch_json(url, headers=VIDENERATE_HEADERS)
-    except Exception as e:
-        print(f"[{SOURCE}] fetch_pixabay_video_results failed for query '{q}': {e}")
+    except Exception as exc:
+        print(f"[{SOURCE}] fetch_pixabay_video_results failed for query '{q}': {exc}")
         return []
 
     out: list[SearchResult] = []
@@ -153,7 +154,7 @@ def fetch_pixabay_video_results(
         video_url, thumb_url = _pick_video_urls(result)
         if not video_url or not thumb_url:
             continue
-        thumb_bytes = fetch_bytes(thumb_url, headers=VIDENERATE_HEADERS, source=SOURCE)
+        thumb_bytes = fetch_bytes(thumb_url, headers=VIDENERATE_HEADERS, log_tag=SOURCE)
         if thumb_bytes:
             out.append(
                 SearchResult(

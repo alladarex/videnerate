@@ -28,9 +28,7 @@ def sanitize_filename(name: str) -> str:
     Returns an empty string for a blank name, so a caller that needs a name
     regardless supplies its own fallback.
     """
-    return "".join(
-        "_" if char in INVALID_FILENAME_CHARS else char for char in name.strip()
-    )
+    return "".join("_" if char in INVALID_FILENAME_CHARS else char for char in name.strip())
 
 
 @dataclass(frozen=True)

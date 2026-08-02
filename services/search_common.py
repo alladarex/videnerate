@@ -8,6 +8,7 @@ payload, so the request/download code lives here and each provider passes its ow
 import json
 import urllib.request
 from dataclasses import dataclass
+from typing import Any
 
 from core.models.media import MediaType
 
@@ -44,7 +45,7 @@ def is_valid_http_url(value: object) -> bool:
     return isinstance(value, str) and value.startswith("http")
 
 
-def fetch_json(url: str, *, headers: dict[str, str]) -> dict:
+def fetch_json(url: str, *, headers: dict[str, str]) -> dict[str, Any]:
     """Fetch and parse a JSON API response. Network and parse errors propagate."""
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_S) as resp:
@@ -52,13 +53,13 @@ def fetch_json(url: str, *, headers: dict[str, str]) -> dict:
     return json.loads(payload)
 
 
-def fetch_bytes(url: str, *, headers: dict[str, str], source: str) -> bytes | None:
-    """Download raw bytes (thumbnails). Returns None on failure; 'source' is the log tag."""
+def fetch_bytes(url: str, *, headers: dict[str, str], log_tag: str) -> bytes | None:
+    """Download raw bytes (thumbnails). Returns None on failure."""
     try:
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_S) as resp:
             data = resp.read()
         return data or None
-    except Exception as e:
-        print(f"[{source}] fetch_bytes failed for {url}: {e}")
+    except Exception as exc:
+        print(f"[{log_tag}] fetch_bytes failed for {url}: {exc}")
         return None

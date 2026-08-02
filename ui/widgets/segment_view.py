@@ -17,6 +17,8 @@ from core.models.segment import Segment
 from core.models.word_timeline import load_word_timeline, segment_playback_bounds
 from core.project_paths import ProjectPaths
 from services.project_service import save_project
+from ui.cache.segment_preview_cache import SegmentPreviewCache
+from ui.cache.segment_search_cache import SegmentSearchCache
 from ui.styles.qss import (
     ACTION_BUTTON,
     ICON_CLOSE_BUTTON,
@@ -27,12 +29,8 @@ from ui.styles.qss import (
     TRANSPARENT_SCROLL,
     top_bar_style,
 )
-from ui.cache.segment_preview_cache import SegmentPreviewCache
-from ui.cache.segment_search_cache import SegmentSearchCache
 from ui.widgets.segment_view_grid import SegmentViewGridController
 from ui.widgets.voiceover_playback import VoiceoverPlaybackController
-
-
 
 
 class SegmentView(QWidget):
@@ -120,8 +118,12 @@ class SegmentView(QWidget):
         top_inner.addWidget(
             self._play_btn, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
-        top_inner.addWidget(save_btn, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        top_inner.addWidget(close_btn, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        top_inner.addWidget(
+            save_btn, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        top_inner.addWidget(
+            close_btn, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
 
         self._scroll = QScrollArea(self)
         self._scroll.setWidgetResizable(True)
@@ -147,7 +149,7 @@ class SegmentView(QWidget):
             grid_spacing=self._grid_spacing,
             search_cache=self._search_cache,
             preview_cache=preview_cache,
-            on_media_selected=lambda seg_id, b: self.media_selected.emit(seg_id, b),
+            on_media_selected=lambda segment_id, b: self.media_selected.emit(segment_id, b),
             word_timeline=self._word_timeline,
         )
         self._grid_controller.set_segment(self.current_segment)
@@ -240,7 +242,7 @@ class SegmentView(QWidget):
     def _toggle_segment_voiceover(self) -> None:
         seg = self.current_segment
         start, end = self._segment_playback_bounds(seg)
-        self._voiceover.toggle_segment(seg.id, start, end)
+        self._voiceover.toggle_segment(seg.id, start_s=start, end_s=end)
 
     def _sync_playback_button(self, *_args: object) -> None:
         if self._play_btn is None:
@@ -254,8 +256,8 @@ class SegmentView(QWidget):
         )
 
     def set_segment(self, segment: Segment) -> None:
-        for i, s in enumerate(self._project.segments):
-            if s.id == segment.id:
+        for i, seg in enumerate(self._project.segments):
+            if seg.id == segment.id:
                 self._current_index = i
                 break
         else:
@@ -313,9 +315,12 @@ class SegmentView(QWidget):
         if self._nav_next is not None:
             self._nav_next.setEnabled(n > 0 and self._current_index < n - 1)
 
-        if self._dots_scroll is not None and self._dot_buttons and self._current_index < len(self._dot_buttons):
+        if (
+            self._dots_scroll is not None
+            and self._dot_buttons
+            and self._current_index < len(self._dot_buttons)
+        ):
             self._dots_scroll.ensureWidgetVisible(self._dot_buttons[self._current_index])
 
         self._voiceover.on_active_segment_changed(self.current_segment.id)
         self._sync_playback_button()
-

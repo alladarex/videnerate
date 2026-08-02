@@ -1,5 +1,7 @@
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QMouseEvent, QPixmap
+from collections.abc import Callable
+
+from PySide6.QtCore import QEvent, QSize, Qt, Signal
+from PySide6.QtGui import QEnterEvent, QHideEvent, QMouseEvent, QPixmap
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -7,46 +9,56 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from collections.abc import Callable
-
 from core.models.media import MediaType
 from services.search_common import SearchResult
-from ui.widgets.hover_media_preview import HoverMediaPreview
 from ui.cache.segment_preview_cache import SegmentPreviewCache
-from ui.styles.qss import MUTED_LABEL
-from ui.widgets.tile_frame import TileFrame
-from ui.utils.tile_pixmap import (
-    inner_preview_edge,
-    load_scaled_pixmap,
-    load_scaled_pixmap_from_path,
-)
+from ui.utils.tile_pixmap import load_pixmap_from_path, scale_to_fit
 from ui.utils.ui_paths import icon_path
-
+from ui.widgets.hover_media_preview import HoverMediaPreview
+from ui.widgets.tile_frame import TileFrame
 
 _ICON_PIXMAP_CACHE: dict[str, QPixmap | None] = {}
+
+# Per media type: the badge icon, and the text shown when a thumbnail will not decode.
+_TILE_LOOK_BY_TYPE: dict[MediaType, tuple[str, str]] = {
+    MediaType.IMAGE: ("image-w.png", "Image failed"),
+    MediaType.VIDEO: ("video-w.png", "Video failed"),
+    MediaType.GIF: ("gif-w.png", "GIF failed"),
+}
 
 
 def _cached_icon_pixmap(icon_filename: str) -> QPixmap | None:
     cached = _ICON_PIXMAP_CACHE.get(icon_filename)
     if cached is not None:
         return cached
-    pixmap = load_scaled_pixmap_from_path(icon_path(icon_filename), 16)
+    pixmap = load_pixmap_from_path(icon_path(icon_filename))
+    if pixmap is not None:
+        pixmap = scale_to_fit(pixmap, QSize(16, 16))
     _ICON_PIXMAP_CACHE[icon_filename] = pixmap
     return pixmap
 
 
-class _BaseResultTile(TileFrame):
+class _ResultTile(TileFrame):
+    """One search result: a media-type badge above a preview of the result itself.
+
+    Images use 'HoverMediaPreview' too, though they have nothing to hover, so all
+    three types share one drawing path.
+    """
+
+    clicked = Signal()
+
     def __init__(
         self,
         *,
         size_px: int,
         icon_filename: str,
         placeholder_text: str,
+        url: str,
+        preview_cache: SegmentPreviewCache,
+        media_type: MediaType,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(size_px=size_px, parent=parent, hover_shadow=True)
-        self._size_px = size_px
-        self._placeholder_text = placeholder_text
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         root = QVBoxLayout(self)
@@ -67,21 +79,25 @@ class _BaseResultTile(TileFrame):
             self._icon_label.setText("")
         else:
             self._icon_label.setText("•")
-        icon_row.addWidget(self._icon_label, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        icon_row.addWidget(
+            self._icon_label, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+        )
         icon_row.addStretch(1)
         root.addLayout(icon_row, 0)
 
-        self._content_host = QWidget(self)
-        self._content_host.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        self._label = QLabel(self._content_host)
-        self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._label.setStyleSheet(MUTED_LABEL)
-        self._label.setText(placeholder_text)
-        self._label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        self._content_layout = QVBoxLayout(self._content_host)
-        self._content_layout.setContentsMargins(0, 0, 0, 0)
-        self._content_layout.addWidget(self._label, 1)
-        root.addWidget(self._content_host, 1)
+        content_host = QWidget(self)
+        content_host.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._media_preview = HoverMediaPreview(
+            placeholder_text=placeholder_text,
+            preview_cache=preview_cache,
+            parent=content_host,
+        )
+        self._media_preview.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._media_preview.bind_from_search_url(media_type=media_type, media_url=url)
+        content_layout = QVBoxLayout(content_host)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.addWidget(self._media_preview, 1)
+        root.addWidget(content_host, 1)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -89,58 +105,17 @@ class _BaseResultTile(TileFrame):
         super().mousePressEvent(event)
 
     def set_thumbnail_bytes(self, thumb_bytes: bytes) -> None:
-        target = inner_preview_edge(self._size_px, reserved=40)
-        pixmap = load_scaled_pixmap(thumb_bytes, target)
-        if pixmap is None:
-            self._label.setText(self._placeholder_text)
-            return
-        self._label.setPixmap(pixmap)
-        self._label.setText("")
-
-
-class _HoverPlayableTile(_BaseResultTile):
-    def __init__(
-        self,
-        *,
-        size_px: int,
-        icon_filename: str,
-        placeholder_text: str,
-        url: str,
-        preview_cache: SegmentPreviewCache,
-        media_type: MediaType,
-        parent: QWidget | None = None,
-    ) -> None:
-        super().__init__(
-            size_px=size_px,
-            icon_filename=icon_filename,
-            placeholder_text=placeholder_text,
-            parent=parent,
-        )
-        self._media_preview = HoverMediaPreview(
-            tile_size_px=size_px,
-            reserved=40,
-            placeholder_text=placeholder_text,
-            preview_cache=preview_cache,
-            parent=self._content_host,
-        )
-        self._media_preview.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        self._media_preview.bind_from_search_url(media_type=media_type, media_url=url)
-        self._content_layout.removeWidget(self._label)
-        self._label.hide()
-        self._content_layout.addWidget(self._media_preview, 1)
-
-    def set_thumbnail_bytes(self, thumb_bytes: bytes) -> None:
         self._media_preview.set_thumbnail_bytes(thumb_bytes)
 
-    def enterEvent(self, event) -> None:
+    def enterEvent(self, event: QEnterEvent) -> None:
         super().enterEvent(event)
         self._media_preview.on_hover_enter()
 
-    def leaveEvent(self, event) -> None:
+    def leaveEvent(self, event: QEvent) -> None:
         super().leaveEvent(event)
         self._media_preview.on_hover_leave()
 
-    def hideEvent(self, event) -> None:
+    def hideEvent(self, event: QHideEvent) -> None:
         super().hideEvent(event)
         self._media_preview.on_hover_leave()
 
@@ -148,93 +123,25 @@ class _HoverPlayableTile(_BaseResultTile):
         self._media_preview.dispose()
 
 
-class ImageTile(_BaseResultTile):
-
-    clicked = Signal()
-
-    def __init__(self, *, size_px: int, parent: QWidget | None = None) -> None:
-        super().__init__(
-            size_px=size_px,
-            icon_filename="image-w.png",
-            placeholder_text="Image failed",
-            parent=parent,
-        )
-
-
-class VideoTile(_HoverPlayableTile):
-
-    clicked = Signal()
-
-    def __init__(
-        self,
-        *,
-        size_px: int,
-        url: str,
-        preview_cache: SegmentPreviewCache,
-        parent: QWidget | None = None,
-    ) -> None:
-        super().__init__(
-            size_px=size_px,
-            icon_filename="video-w.png",
-            placeholder_text="Video failed",
-            url=url,
-            preview_cache=preview_cache,
-            media_type=MediaType.VIDEO,
-            parent=parent,
-        )
-
-
-class GifTile(_HoverPlayableTile):
-
-    clicked = Signal()
-
-    def __init__(
-        self,
-        *,
-        size_px: int,
-        url: str,
-        preview_cache: SegmentPreviewCache,
-        parent: QWidget | None = None,
-    ) -> None:
-        super().__init__(
-            size_px=size_px,
-            icon_filename="gif-w.png",
-            placeholder_text="GIF failed",
-            url=url,
-            preview_cache=preview_cache,
-            media_type=MediaType.GIF,
-            parent=parent,
-        )
-
-
 def build_result_tile(
     result: SearchResult,
     *,
     size_px: int,
     preview_cache: SegmentPreviewCache,
-    parent: QWidget,
     on_select: Callable[[SearchResult], None],
+    parent: QWidget,
 ) -> QWidget:
     """Build one search result tile and wire its click to on_select(result)."""
-    if result.media_type == MediaType.IMAGE:
-        tile = ImageTile(size_px=size_px, parent=parent)
-    elif result.media_type == MediaType.VIDEO:
-        tile = VideoTile(
-            size_px=size_px,
-            url=result.url,
-            preview_cache=preview_cache,
-            parent=parent,
-        )
-    elif result.media_type == MediaType.GIF:
-        tile = GifTile(
-            size_px=size_px,
-            url=result.url,
-            preview_cache=preview_cache,
-            parent=parent,
-        )
-    else:
-        raise ValueError(f"Unknown media type: {result.media_type}")
-
+    icon_filename, placeholder_text = _TILE_LOOK_BY_TYPE[result.media_type]
+    tile = _ResultTile(
+        size_px=size_px,
+        icon_filename=icon_filename,
+        placeholder_text=placeholder_text,
+        url=result.url,
+        preview_cache=preview_cache,
+        media_type=result.media_type,
+        parent=parent,
+    )
     tile.set_thumbnail_bytes(result.thumb_bytes)
     tile.clicked.connect(lambda: on_select(result))
     return tile

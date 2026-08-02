@@ -14,16 +14,11 @@ class Project:
     created_at: datetime = field(default_factory=datetime.now)
 
     @classmethod
-    def from_segment_texts(
-        cls, segment_texts: list[str], title: str = "Untitled"
-    ) -> Project:
+    def from_segment_texts(cls, segment_texts: list[str], title: str = "Untitled") -> Project:
         """Create a project with one segment per narration text, in order."""
         return cls(
             title=title,
-            segments=[
-                Segment(text=text, segment_id=i)
-                for i, text in enumerate(segment_texts)
-            ],
+            segments=[Segment(text=text, segment_id=i) for i, text in enumerate(segment_texts)],
         )
 
     def to_dict(self) -> dict[str, Any]:

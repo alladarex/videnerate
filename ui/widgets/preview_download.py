@@ -35,12 +35,12 @@ class UrlDownloadBroker:
         self,
         *,
         url: str,
-        target_base: Path,
+        dest_base: Path,
         on_done: DownloadWaiter,
     ) -> None:
         """Get 'url' onto disk, then hand the finished file to 'on_done'.
 
-        'target_base' is a path with no extension on it. What the URL actually
+        'dest_base' is a path with no extension on it. What the URL actually
         serves is only known once it has been fetched, so the extension is added
         then, and 'on_done' receives the real path that was written, or None if the
         download failed.
@@ -52,7 +52,7 @@ class UrlDownloadBroker:
         Asking for the same url more than once downloads it once. The later callers
         wait in a queue and are all answered together.
         """
-        cached = cached_file_for_base(target_base)
+        cached = cached_file_for_base(dest_base)
         if cached is not None:
             on_done(str(cached))
             return
@@ -63,7 +63,7 @@ class UrlDownloadBroker:
             return
 
         run_in_thread(
-            lambda: download_media(url, target_base),
+            lambda: download_media(url, dest_base),
             on_success=lambda path: self._notify_waiters(url, str(path)),
             on_error=lambda exc: self._on_download_failed(url, exc),
         )

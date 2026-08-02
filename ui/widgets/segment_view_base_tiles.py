@@ -1,8 +1,10 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget
 
+from ui.cache.segment_preview_cache import SegmentPreviewCache
 from ui.styles.qss import (
     ACCENT_ICON_LABEL,
     ACTION_BUTTON,
@@ -12,9 +14,8 @@ from ui.styles.qss import (
     SECTION_TITLE_LABEL,
     SMALL_MUTED_LABEL,
 )
-from ui.widgets.search_settings import build_search_settings_menu
 from ui.widgets.hover_media_preview import HoverMediaPreview
-from ui.cache.segment_preview_cache import SegmentPreviewCache
+from ui.widgets.search_settings import build_search_settings_menu
 from ui.widgets.tile_frame import TileFrame
 
 
@@ -25,7 +26,7 @@ class SegmentBaseTiles:
     tiles: list[QWidget]
     media_preview: HoverMediaPreview
     search_input: QLineEdit
-    search_button: QPushButton
+    search_btn: QPushButton
     search_status: QLabel
 
 
@@ -34,7 +35,7 @@ def build_base_tiles(
     parent: QWidget,
     tile_size_px: int,
     preview_cache: SegmentPreviewCache,
-    on_search_clicked,
+    on_search_clicked: Callable[[], None],
 ) -> SegmentBaseTiles:
     tiles: list[QWidget] = []
 
@@ -48,14 +49,12 @@ def build_base_tiles(
     media_title.setStyleSheet(SECTION_TITLE_LABEL)
     media_root.addWidget(media_title, 0)
 
-    media_body = HoverMediaPreview(
-        tile_size_px=tile_size_px,
-        reserved=48,
+    media_preview = HoverMediaPreview(
         placeholder_text="No media selected",
         preview_cache=preview_cache,
         parent=media_tile,
     )
-    media_root.addWidget(media_body, 1)
+    media_root.addWidget(media_preview, 1)
 
     # (2) Upload media tile
     upload_tile = TileFrame(size_px=tile_size_px, parent=parent)
@@ -79,26 +78,26 @@ def build_base_tiles(
     upload_root.addWidget(browse_btn, 0)
 
     # (3) Generate image tile
-    gen_tile = TileFrame(size_px=tile_size_px, parent=parent)
-    gen_root = QVBoxLayout(gen_tile)
-    gen_root.setContentsMargins(12, 12, 12, 12)
-    gen_root.setSpacing(10)
+    generate_tile = TileFrame(size_px=tile_size_px, parent=parent)
+    generate_root = QVBoxLayout(generate_tile)
+    generate_root.setContentsMargins(12, 12, 12, 12)
+    generate_root.setSpacing(10)
 
-    gen_title = QLabel("Generate image", gen_tile)
-    gen_title.setStyleSheet(SECTION_TITLE_LABEL)
-    gen_root.addWidget(gen_title, 0)
+    generate_title = QLabel("Generate image", generate_tile)
+    generate_title.setStyleSheet(SECTION_TITLE_LABEL)
+    generate_root.addWidget(generate_title, 0)
 
-    gen_hint = QLabel("Generate a new image for this segment.", gen_tile)
-    gen_hint.setWordWrap(True)
-    gen_hint.setStyleSheet(MUTED_LABEL)
-    gen_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    gen_root.addWidget(gen_hint, 1)
+    generate_hint = QLabel("Generate a new image for this segment.", generate_tile)
+    generate_hint.setWordWrap(True)
+    generate_hint.setStyleSheet(MUTED_LABEL)
+    generate_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    generate_root.addWidget(generate_hint, 1)
 
-    gen_btn = QPushButton("Generate", gen_tile)
-    gen_btn.setEnabled(False)
-    gen_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    gen_btn.setStyleSheet(ACTION_BUTTON)
-    gen_root.addWidget(gen_btn, 0)
+    generate_btn = QPushButton("Generate", generate_tile)
+    generate_btn.setEnabled(False)
+    generate_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+    generate_btn.setStyleSheet(ACTION_BUTTON)
+    generate_root.addWidget(generate_btn, 0)
 
     # (4) Search tile
     search_tile = TileFrame(size_px=tile_size_px, parent=parent)
@@ -145,11 +144,11 @@ def build_base_tiles(
     search_status.setStyleSheet(SMALL_MUTED_LABEL)
     search_root.addWidget(search_status, 1)
 
-    tiles.extend([media_tile, upload_tile, gen_tile, search_tile])
+    tiles.extend([media_tile, upload_tile, generate_tile, search_tile])
     return SegmentBaseTiles(
         tiles=tiles,
-        media_preview=media_body,
+        media_preview=media_preview,
         search_input=search_input,
-        search_button=search_btn,
+        search_btn=search_btn,
         search_status=search_status,
     )

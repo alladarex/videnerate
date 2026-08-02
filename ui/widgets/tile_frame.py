@@ -12,10 +12,10 @@ class TileFrame(QFrame):
         self,
         *,
         size_px: int,
-        parent: QWidget | None = None,
         stylesheet: str = TILE_FRAME,
         object_name: str = "SegmentTile",
         hover_shadow: bool = False,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName(object_name)

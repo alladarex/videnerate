@@ -22,13 +22,15 @@ def tokenize_words(text: str) -> list[str]:
         raise ValueError("Text is empty.")
     normalized = normalize_text(text)
     tokens = [
-        match.group(0).lower().strip("'\"") # Drop decorative quotes the LLM sometimes adds at edges
+        match.group(0)
+        .lower()
+        .strip("'\"")  # Drop decorative quotes the LLM sometimes adds at edges
         for match in _WORD_RE.finditer(normalized)
     ]
     return [t for t in tokens if t]
 
 
-def assert_segment_words_match_narration(narration: str, segments: list[str]) -> None:
+def require_segment_words_match_narration(narration: str, segments: list[str]) -> None:
     """Raise if segment texts are not an exact word-for-word split of narration.
 
     Comparison normalizes through tokenize_words, callers should normalize_text

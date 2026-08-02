@@ -10,7 +10,7 @@ from core.prompts import (
     SEGMENTATION_SYSTEM_PROMPT,
     narration_prompt,
 )
-from core.word_tokenize import assert_segment_words_match_narration
+from core.word_tokenize import require_segment_words_match_narration
 
 _DEEPSEEK_CLIENT = OpenAI(
     api_key=DEEPSEEK_API_KEY,
@@ -95,7 +95,7 @@ def generate_segments(
 
     raw_segments = segment_narration(narration, selected_model=selected_model)
     segments = [line.strip() for line in raw_segments.splitlines() if line.strip()]
-    assert_segment_words_match_narration(narration, segments)
+    require_segment_words_match_narration(narration, segments)
     return segments
 
 

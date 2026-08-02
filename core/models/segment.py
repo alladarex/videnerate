@@ -6,7 +6,10 @@ from .media import Media
 
 
 class Segment:
-    def __init__(self, text: str, segment_id: int):
+    # Not a dataclass, unlike every other model here: that would force either a
+    # ctor parameter named 'id', which shadows the builtin, or renaming the
+    # attribute and the 'id' key in project.json.
+    def __init__(self, text: str, segment_id: int) -> None:
         self.id = segment_id
         self.text = text
         self.media: Media | None = None

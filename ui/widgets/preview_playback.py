@@ -46,8 +46,8 @@ class SharedVideoPreviewBackend(QObject):
         self.stop()
         self._player.setSource(QUrl())
 
-     #QMediaPlayer.errorOccurred typically emits something like (error, error_string)
-    def _on_media_error(self, *_) -> None:
+    # QMediaPlayer.errorOccurred typically emits something like (error, error_string)
+    def _on_media_error(self, *_args: object) -> None:
         if self._owner is not None:
             self._owner.on_video_error()
 
@@ -55,7 +55,7 @@ class SharedVideoPreviewBackend(QObject):
         if (
             status == QMediaPlayer.MediaStatus.EndOfMedia
             and self._owner is not None
-            and self._owner.is_hovered()
+            and self._owner.is_hovered
         ):
             self._player.setPosition(0)
             self._player.play()

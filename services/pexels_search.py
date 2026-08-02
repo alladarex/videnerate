@@ -1,5 +1,6 @@
 import math
 import urllib.parse
+from typing import Any
 
 from config import PEXELS_API_KEY
 from core.models.media import MediaType
@@ -18,19 +19,19 @@ SOURCE = "Pexels"
 _PEXELS_MAX_PER_PAGE = 80
 
 
-def _pick_image_urls(result: dict) -> tuple[str | None, str | None]:
-    """Return (source_url, thumb_url) for an image search result."""
+def _pick_image_urls(result: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Return (image_url, thumb_url) for an image search result."""
     src = result.get("src") or {}
     if not isinstance(src, dict):
         return (None, None)
-    source_url = src.get("original") or src.get("large2x") or src.get("large")
+    image_url = src.get("original") or src.get("large2x") or src.get("large")
     thumb_url = src.get("medium") or src.get("small") or src.get("tiny")
-    if not is_valid_http_url(source_url) or not is_valid_http_url(thumb_url):
+    if not is_valid_http_url(image_url) or not is_valid_http_url(thumb_url):
         return (None, None)
-    return (source_url, thumb_url)
+    return (image_url, thumb_url)
 
 
-def _pick_video_urls(result: dict) -> tuple[str | None, str | None]:
+def _pick_video_urls(result: dict[str, Any]) -> tuple[str | None, str | None]:
     """Return (video_url, thumb_url) for a video search result.
 
     Only picks streams with short edge in [720, 1080], skips videos with no
@@ -77,8 +78,8 @@ def fetch_pexels_image_results(query: str, *, limit: int = 10) -> list[SearchRes
     )
     try:
         payload = fetch_json(url, headers=pexels_headers())
-    except Exception as e:
-        print(f"[{SOURCE}] fetch_pexels_image_results failed for query '{q}': {e}")
+    except Exception as exc:
+        print(f"[{SOURCE}] fetch_pexels_image_results failed for query '{q}': {exc}")
         return []
 
     out: list[SearchResult] = []
@@ -88,7 +89,7 @@ def fetch_pexels_image_results(query: str, *, limit: int = 10) -> list[SearchRes
         image_url, thumb_url = _pick_image_urls(result)
         if not image_url or not thumb_url:
             continue
-        thumb_bytes = fetch_bytes(thumb_url, headers=pexels_headers(), source=SOURCE)
+        thumb_bytes = fetch_bytes(thumb_url, headers=pexels_headers(), log_tag=SOURCE)
         if thumb_bytes:
             out.append(
                 SearchResult(
@@ -125,8 +126,8 @@ def fetch_pexels_video_results(
     url = "https://api.pexels.com/videos/search?" + urllib.parse.urlencode(params)
     try:
         payload = fetch_json(url, headers=pexels_headers())
-    except Exception as e:
-        print(f"[{SOURCE}] fetch_pexels_video_results failed for query '{q}': {e}")
+    except Exception as exc:
+        print(f"[{SOURCE}] fetch_pexels_video_results failed for query '{q}': {exc}")
         return []
 
     out: list[SearchResult] = []
@@ -136,7 +137,7 @@ def fetch_pexels_video_results(
         video_url, thumb_url = _pick_video_urls(result)
         if not video_url or not thumb_url:
             continue
-        thumb_bytes = fetch_bytes(thumb_url, headers=pexels_headers(), source=SOURCE)
+        thumb_bytes = fetch_bytes(thumb_url, headers=pexels_headers(), log_tag=SOURCE)
         if thumb_bytes:
             out.append(
                 SearchResult(

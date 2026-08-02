@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
+from PySide6.QtGui import QCloseEvent, QKeySequence, QResizeEvent, QShortcut
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -14,23 +14,23 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.models.segment import Segment
 from core.models.project import Project
+from core.models.segment import Segment
 from core.project_paths import ProjectPaths
 from services.project_service import save_project
+from ui.cache.segment_preview_cache import SegmentPreviewCache
 from ui.dialogs.export_dialog import ExportDialog
 from ui.dialogs.missing_media_dialog import MissingMediaDialog
 from ui.styles.qss import ACTION_BUTTON, TITLE_LABEL, top_bar_style
-from ui.cache.segment_preview_cache import SegmentPreviewCache
 from ui.utils.grid_layout import relayout_grid
 from ui.widgets.segment_tile import SegmentTile
 from ui.widgets.segment_view import SegmentView
 from ui.widgets.voiceover_playback import VoiceoverPlaybackController
 
-_PROJECT_VIEW_BAR_HEIGHT_PX = 56
-
 
 class ProjectWindow(QMainWindow):
+    _BAR_HEIGHT_PX = 56
+
     def __init__(self, project: Project) -> None:
         super().__init__()
         self._project = project
@@ -48,22 +48,22 @@ class ProjectWindow(QMainWindow):
         self._segment_tiles: list[SegmentTile] = []
         self._preview_cache = SegmentPreviewCache(self._paths)
         # Store a map of segment id to tile for quick lookup
-        self._segment_tile_by_id: dict[int, SegmentTile] = {}
+        self._tile_by_segment_id: dict[int, SegmentTile] = {}
         self._tile_size_px = 240
         self._grid_spacing = 12
         self.setWindowTitle(f"Videnerate - {self._project.title}")
 
-        self._voiceover = VoiceoverPlaybackController(self, self._paths)
-        self._voiceover.state_changed.connect(self._sync_playback_buttons)
+        self._voiceover = VoiceoverPlaybackController(self._paths, parent=self)
+        self._voiceover.state_changed.connect(self._sync_playback_button)
 
         self._build_ui()
-        self._sync_playback_buttons()
+        self._sync_playback_button()
 
         save_shortcut = QShortcut(QKeySequence.StandardKey.Save, self)
         save_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
         save_shortcut.activated.connect(self._save_project)
 
-    def _sync_playback_buttons(self) -> None:
+    def _sync_playback_button(self) -> None:
         """Keep project voiceover play button in sync with playback state."""
         if self._voiceover_btn is not None:
             self._voiceover_btn.setText(self._voiceover.full_play_button_text())
@@ -102,7 +102,7 @@ class ProjectWindow(QMainWindow):
         header.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         header.setStyleSheet(TITLE_LABEL)
         header.setSizePolicy(
-            QSizePolicy.Policy.Expanding, 
+            QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,
         )
 
@@ -129,7 +129,7 @@ class ProjectWindow(QMainWindow):
 
         top_row = QFrame(self._project_view)
         top_row.setObjectName("ProjectViewTopBar")
-        top_row.setFixedHeight(_PROJECT_VIEW_BAR_HEIGHT_PX)
+        top_row.setFixedHeight(self._BAR_HEIGHT_PX)
         top_row.setStyleSheet(top_bar_style("ProjectViewTopBar"))
         top_inner = QHBoxLayout(top_row)
         top_inner.setContentsMargins(14, 8, 10, 8)
@@ -173,7 +173,7 @@ class ProjectWindow(QMainWindow):
             )
             for seg in self._project.segments
         ]
-        self._segment_tile_by_id = {
+        self._tile_by_segment_id = {
             seg.id: tile for seg, tile in zip(self._project.segments, self._segment_tiles)
         }
         self._relayout_segments_grid()
@@ -199,7 +199,7 @@ class ProjectWindow(QMainWindow):
 
         self._stack.setCurrentIndex(0)
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._relayout_segments_grid()
 
@@ -217,12 +217,12 @@ class ProjectWindow(QMainWindow):
     def _wire_segment_tile_clicks(self) -> None:
         """Connect each segment tile click to opening detail view."""
         for tile, seg in zip(self._segment_tiles, self._project.segments):
-            tile.clicked.connect(lambda s=seg: self._open_segment_view(s))
+            tile.clicked.connect(lambda seg=seg: self._open_segment_view(seg))
 
     def _open_segment_view(self, segment: Segment) -> None:
         self._segment_view.set_segment(segment)
         self._stack.setCurrentIndex(1)
-        self._sync_playback_buttons()
+        self._sync_playback_button()
 
     def _show_project_view(self) -> None:
         """Return to project grid (tile previews update on media selection, not here)."""
@@ -233,6 +233,6 @@ class ProjectWindow(QMainWindow):
 
     def _on_media_selected(self, segment_id: int, thumb_bytes: bytes) -> None:
         """Update matching project tile thumbnail after media selection in detail view."""
-        tile = self._segment_tile_by_id.get(segment_id)
+        tile = self._tile_by_segment_id.get(segment_id)
         if tile is not None:
             tile.set_thumbnail_bytes(thumb_bytes)

@@ -1,7 +1,7 @@
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QComboBox,
     QCheckBox,
+    QComboBox,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -31,9 +31,9 @@ class StartHomeView(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.projects_list = QListWidget()
-        self.empty_projects_label = QLabel("No projects to load")
-        self.empty_projects_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._projects_list = QListWidget()
+        self._empty_projects_label = QLabel("No projects to load")
+        self._empty_projects_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -63,11 +63,11 @@ class StartHomeView(QWidget):
         load_project_box = QGroupBox("Load Project")
         load_layout = QVBoxLayout()
         load_layout.setSpacing(12)
-        load_layout.addWidget(self.projects_list)
-        load_layout.addWidget(self.empty_projects_label)
+        load_layout.addWidget(self._projects_list)
+        load_layout.addWidget(self._empty_projects_label)
         load_project_box.setLayout(load_layout)
 
-        self.projects_list.itemActivated.connect(
+        self._projects_list.itemActivated.connect(
             lambda item: self.project_activated.emit(item.text())
         )
 
@@ -76,6 +76,13 @@ class StartHomeView(QWidget):
         main_layout.setColumnStretch(0, 1)
         main_layout.setColumnStretch(1, 1)
 
+    def set_projects(self, titles: list[str]) -> None:
+        """Show the loadable projects, or the empty notice when there are none."""
+        self._projects_list.clear()
+        self._projects_list.addItems(titles)
+        self._projects_list.setVisible(bool(titles))
+        self._empty_projects_label.setVisible(not titles)
+
 
 class VideoIdeaView(QWidget):
     back_clicked = Signal()
@@ -83,10 +90,10 @@ class VideoIdeaView(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.video_idea_input = QPlainTextEdit()
-        self.back_button = QPushButton("Back")
-        self.generate_button = QPushButton("Generate")
-        self.model_selector = QComboBox()
+        self._video_idea_input = QPlainTextEdit()
+        self._back_btn = QPushButton("Back")
+        self._generate_btn = QPushButton("Generate")
+        self._model_selector = QComboBox()
         self._action_stack = QStackedWidget()
         self._build_ui()
 
@@ -96,35 +103,35 @@ class VideoIdeaView(QWidget):
         layout.setHorizontalSpacing(20)
         layout.setVerticalSpacing(12)
 
-        self.back_button.clicked.connect(self.back_clicked)
+        self._back_btn.clicked.connect(self.back_clicked)
         back_row = QHBoxLayout()
-        back_row.addWidget(self.back_button)
+        back_row.addWidget(self._back_btn)
         back_row.addStretch()
         layout.addLayout(back_row, 0, 0)
 
-        self.video_idea_input.setPlaceholderText("Enter video idea...")
-        layout.addWidget(self.video_idea_input, 1, 0)
+        self._video_idea_input.setPlaceholderText("Enter video idea...")
+        layout.addWidget(self._video_idea_input, 1, 0)
 
-        self.generate_button.clicked.connect(self.generate_clicked)
+        self._generate_btn.clicked.connect(self.generate_clicked)
         generate_row = QWidget(self)
         generate_row_layout = QHBoxLayout(generate_row)
         generate_row_layout.setContentsMargins(0, 0, 0, 0)
-        generate_row_layout.addWidget(self.generate_button)
+        generate_row_layout.addWidget(self._generate_btn)
         generate_row_layout.addStretch()
-        self.model_selector.addItems(SUPPORTED_MODELS)
-        self.model_selector.setCurrentText(DEFAULT_NARRATION_MODEL)
-        generate_row_layout.addWidget(self.model_selector)
+        self._model_selector.addItems(SUPPORTED_MODELS)
+        self._model_selector.setCurrentText(DEFAULT_NARRATION_MODEL)
+        generate_row_layout.addWidget(self._model_selector)
 
         loading_row = QWidget(self)
         loading_row_layout = QHBoxLayout(loading_row)
         loading_row_layout.setContentsMargins(0, 0, 0, 0)
         loading_label = QLabel("Generating...")
-        loading_spinner = QProgressBar()
-        loading_spinner.setRange(0, 0)
-        loading_spinner.setTextVisible(False)
-        loading_spinner.setFixedWidth(120)
+        loading_bar = QProgressBar()
+        loading_bar.setRange(0, 0)
+        loading_bar.setTextVisible(False)
+        loading_bar.setFixedWidth(120)
         loading_row_layout.addWidget(loading_label)
-        loading_row_layout.addWidget(loading_spinner)
+        loading_row_layout.addWidget(loading_bar)
         loading_row_layout.addStretch()
 
         self._action_stack.addWidget(generate_row)
@@ -135,12 +142,15 @@ class VideoIdeaView(QWidget):
 
     def set_loading(self, is_loading: bool) -> None:
         self._action_stack.setCurrentIndex(1 if is_loading else 0)
-        self.back_button.setEnabled(not is_loading)
-        self.generate_button.setEnabled(not is_loading)
-        self.model_selector.setEnabled(not is_loading)
+        self._back_btn.setEnabled(not is_loading)
+        self._generate_btn.setEnabled(not is_loading)
+        self._model_selector.setEnabled(not is_loading)
 
-    def get_selected_model(self) -> str:
-        return self.model_selector.currentText()
+    def video_idea(self) -> str:
+        return self._video_idea_input.toPlainText().strip()
+
+    def selected_model(self) -> str:
+        return self._model_selector.currentText()
 
 
 class NarrationEditorView(QWidget):
@@ -149,12 +159,12 @@ class NarrationEditorView(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.narration_editor = QPlainTextEdit()
-        self.project_title_input = QLineEdit()
-        self.back_button = QPushButton("Back")
-        self.create_project_button = QPushButton("Create project")
-        self.auto_assign_checkbox = QCheckBox("Auto-Assign")
-        self.model_selector = QComboBox()
+        self._narration_editor = QPlainTextEdit()
+        self._project_title_input = QLineEdit()
+        self._back_btn = QPushButton("Back")
+        self._create_project_btn = QPushButton("Create project")
+        self._auto_assign_checkbox = QCheckBox("Auto-Assign")
+        self._model_selector = QComboBox()
         self._action_stack = QStackedWidget()
         self._build_ui()
 
@@ -164,38 +174,38 @@ class NarrationEditorView(QWidget):
         layout.setHorizontalSpacing(20)
         layout.setVerticalSpacing(12)
 
-        self.back_button.clicked.connect(self.back_clicked)
+        self._back_btn.clicked.connect(self.back_clicked)
         back_row = QHBoxLayout()
-        back_row.addWidget(self.back_button)
+        back_row.addWidget(self._back_btn)
         back_row.addStretch()
         layout.addLayout(back_row, 0, 0)
 
-        layout.addWidget(self.narration_editor, 1, 0)
+        layout.addWidget(self._narration_editor, 1, 0)
 
-        self.create_project_button.clicked.connect(self.create_project_clicked)
+        self._create_project_btn.clicked.connect(self.create_project_clicked)
         create_project_row = QWidget(self)
         create_project_row_layout = QHBoxLayout(create_project_row)
         create_project_row_layout.setContentsMargins(0, 0, 0, 0)
-        self.project_title_input.setFixedWidth(180)
-        self.project_title_input.setPlaceholderText("Project title")
-        create_project_row_layout.addWidget(self.project_title_input)
-        create_project_row_layout.addWidget(self.create_project_button)
-        create_project_row_layout.addWidget(self.auto_assign_checkbox)
+        self._project_title_input.setFixedWidth(180)
+        self._project_title_input.setPlaceholderText("Project title")
+        create_project_row_layout.addWidget(self._project_title_input)
+        create_project_row_layout.addWidget(self._create_project_btn)
+        create_project_row_layout.addWidget(self._auto_assign_checkbox)
         create_project_row_layout.addStretch()
-        self.model_selector.addItems(SUPPORTED_MODELS)
-        self.model_selector.setCurrentText(DEFAULT_SEGMENTATION_MODEL)
-        create_project_row_layout.addWidget(self.model_selector)
+        self._model_selector.addItems(SUPPORTED_MODELS)
+        self._model_selector.setCurrentText(DEFAULT_SEGMENTATION_MODEL)
+        create_project_row_layout.addWidget(self._model_selector)
 
         loading_row = QWidget(self)
         loading_row_layout = QHBoxLayout(loading_row)
         loading_row_layout.setContentsMargins(0, 0, 0, 0)
         self._loading_label = QLabel("Creating project...")
-        loading_spinner = QProgressBar()
-        loading_spinner.setRange(0, 0)
-        loading_spinner.setTextVisible(False)
-        loading_spinner.setFixedWidth(160)
+        loading_bar = QProgressBar()
+        loading_bar.setRange(0, 0)
+        loading_bar.setTextVisible(False)
+        loading_bar.setFixedWidth(160)
         loading_row_layout.addWidget(self._loading_label)
-        loading_row_layout.addWidget(loading_spinner)
+        loading_row_layout.addWidget(loading_bar)
         loading_row_layout.addStretch()
 
         self._action_stack.addWidget(create_project_row)
@@ -206,22 +216,28 @@ class NarrationEditorView(QWidget):
 
     def set_loading(self, is_loading: bool) -> None:
         self._action_stack.setCurrentIndex(1 if is_loading else 0)
-        self.back_button.setEnabled(not is_loading)
-        self.create_project_button.setEnabled(not is_loading)
-        self.project_title_input.setReadOnly(is_loading)
-        self.model_selector.setEnabled(not is_loading)
+        self._back_btn.setEnabled(not is_loading)
+        self._create_project_btn.setEnabled(not is_loading)
+        self._project_title_input.setReadOnly(is_loading)
+        self._model_selector.setEnabled(not is_loading)
 
     def set_loading_status(self, message: str) -> None:
         self._loading_label.setText(message)
 
+    def narration(self) -> str:
+        return self._narration_editor.toPlainText().strip()
+
+    def set_narration(self, text: str) -> None:
+        self._narration_editor.setPlainText(text)
+
     def set_project_title(self, title: str) -> None:
-        self.project_title_input.setText(title)
+        self._project_title_input.setText(title)
 
-    def get_project_title(self) -> str:
-        return self.project_title_input.text().strip()
+    def project_title(self) -> str:
+        return self._project_title_input.text().strip()
 
-    def get_selected_model(self) -> str:
-        return self.model_selector.currentText()
+    def selected_model(self) -> str:
+        return self._model_selector.currentText()
 
     def is_auto_assign_checked(self) -> bool:
-        return self.auto_assign_checkbox.isChecked()
+        return self._auto_assign_checkbox.isChecked()

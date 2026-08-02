@@ -1,11 +1,11 @@
 import subprocess
 import sys
 
+from config import APP_DIR
 from core.alignment_report import write_alignment_report
 from core.audio_alignment import assign_segment_word_ranges
 from core.models.project import Project
 from core.models.word_timeline import WordTimeline, load_word_timeline
-from config import APP_DIR
 from core.project_paths import ProjectPaths
 from core.word_tokenize import tokenize_words
 
@@ -36,9 +36,7 @@ def _run_whisper_alignment_subprocess(paths: ProjectPaths) -> None:
                 f"error: timed out after {_ALIGN_TIMEOUT_S}s",
             ],
         )
-        raise RuntimeError(
-            f"Alignment subprocess timed out for {paths.root.name}"
-        ) from exc
+        raise RuntimeError(f"Alignment subprocess timed out for {paths.root.name}") from exc
     except OSError as exc:
         write_alignment_report(
             paths,
@@ -49,9 +47,7 @@ def _run_whisper_alignment_subprocess(paths: ProjectPaths) -> None:
                 f"error: {exc}",
             ],
         )
-        raise RuntimeError(
-            f"Failed to start alignment subprocess for {paths.root.name}"
-        ) from exc
+        raise RuntimeError(f"Failed to start alignment subprocess for {paths.root.name}") from exc
 
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "").strip()

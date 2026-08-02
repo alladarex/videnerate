@@ -1,18 +1,21 @@
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QSize, QTimer, Qt
-from PySide6.QtGui import QEnterEvent, QMovie, QPixmap
+from PySide6.QtCore import QEvent, QSize, Qt, QTimer
+from PySide6.QtGui import QEnterEvent, QMovie, QPixmap, QResizeEvent
 from PySide6.QtMultimedia import QVideoFrame
 from PySide6.QtWidgets import QLabel, QSizePolicy, QStackedLayout, QWidget
 
 from core.models.media import Media, MediaType
 from ui.cache.segment_preview_cache import SegmentPreviewCache, cached_file_for_base
 from ui.styles.qss import MUTED_LABEL, SMALL_MUTED_LABEL
+from ui.utils.tile_pixmap import (
+    load_media_file_thumbnail,
+    load_pixmap,
+    scale_to_fit,
+)
+from ui.utils.ui_paths import icon_path
 from ui.widgets.preview_download import UrlDownloadBroker
 from ui.widgets.preview_playback import SharedVideoPreviewBackend
-from ui.utils.project_media_paths import load_media_file_thumbnail
-from ui.utils.tile_pixmap import inner_preview_edge, load_scaled_pixmap
-from ui.utils.ui_paths import icon_path
 
 _HOVER_DELAY_MS = 500
 
@@ -23,8 +26,6 @@ class HoverMediaPreview(QWidget):
     def __init__(
         self,
         *,
-        tile_size_px: int,
-        reserved: int,
         placeholder_text: str,
         preview_cache: SegmentPreviewCache,
         parent: QWidget,
@@ -34,8 +35,8 @@ class HoverMediaPreview(QWidget):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,
         )
-        self._tile_size_px = tile_size_px
-        self._reserved = reserved
+        # The thumbnail as it arrived. Drawing scales a copy down to the tile.
+        self._source_pixmap: QPixmap | None = None
         self._placeholder_text = placeholder_text
         self._preview_cache = preview_cache
 
@@ -101,15 +102,12 @@ class HoverMediaPreview(QWidget):
         # 1) The image file in the project folder, which only exists after a save
         pixmap = load_media_file_thumbnail(
             media=media,
-            tile_size_px=self._tile_size_px,
-            reserved=self._reserved,
             preview_cache=self._preview_cache,
         )
 
         # 2) The thumbnail the view saved when this media was picked from search results
         if pixmap is None and thumb_bytes:
-            target = inner_preview_edge(self._tile_size_px, reserved=self._reserved)
-            pixmap = load_scaled_pixmap(thumb_bytes, target)
+            pixmap = load_pixmap(thumb_bytes)
 
         self._bind(
             media_type=media.media_type,
@@ -134,12 +132,20 @@ class HoverMediaPreview(QWidget):
 
     def set_placeholder_text(self, text: str) -> None:
         self._placeholder_text = text
+        self._source_pixmap = None
         self._thumbnail.setPixmap(QPixmap())
         self._thumbnail.setText(text)
         self._root.setCurrentWidget(self._thumbnail)
 
-    def set_thumbnail_bytes(self, thumbnail_bytes: bytes | None) -> None:
-        self._show_thumbnail(thumbnail_bytes=thumbnail_bytes)
+    def set_placeholder_pixmap(self, pixmap: QPixmap) -> None:
+        """Show an empty-state icon, drawn at the size the caller chose."""
+        self._source_pixmap = None
+        self._thumbnail.setPixmap(pixmap)
+        self._thumbnail.setText("")
+        self._root.setCurrentWidget(self._thumbnail)
+
+    def set_thumbnail_bytes(self, thumb_bytes: bytes | None) -> None:
+        self._show_thumbnail(thumb_bytes=thumb_bytes)
 
     def set_thumbnail_pixmap(self, pixmap: QPixmap | None) -> None:
         self._show_thumbnail(pixmap=pixmap)
@@ -168,6 +174,7 @@ class HoverMediaPreview(QWidget):
         self._hover_timer.stop()
         self._stop_preview()
 
+    @property
     def is_hovered(self) -> bool:
         return self._hovered
 
@@ -181,37 +188,43 @@ class HoverMediaPreview(QWidget):
         """Remember which media this tile shows, so hovering knows what to play.
 
         This only stores values, it never draws. Whoever calls it draws afterwards
-        Passing no type and no url leaves the tile showing nothing, 
+        Passing no type and no url leaves the tile showing nothing,
         which is what 'clear_media' wants.
         """
         self._stop_preview()
         self._media_type = media_type
         self._media_url = media_url
-        self._playback_path = self._resolve_playback_path(
-            media_url=media_url, file_path=file_path
-        )
+        self._playback_path = self._resolve_playback_path(media_url=media_url, file_path=file_path)
         self._download_started = False
 
     def _show_thumbnail(
         self,
         *,
-        thumbnail_bytes: bytes | None = None,
+        thumb_bytes: bytes | None = None,
         pixmap: QPixmap | None = None,
     ) -> None:
-        if thumbnail_bytes:
-            target = inner_preview_edge(self._tile_size_px, reserved=self._reserved)
-            pixmap = load_scaled_pixmap(thumbnail_bytes, target)
-        if pixmap is not None and not pixmap.isNull():
-            self._thumbnail.setPixmap(pixmap)
-            self._thumbnail.setText("")
-        else:
-            self._thumbnail.setPixmap(QPixmap())
-            self._thumbnail.setText(self._placeholder_text)
+        """Take a new thumbnail (or none) and bring it to the front."""
+        if thumb_bytes:
+            pixmap = load_pixmap(thumb_bytes)
+        if pixmap is None or pixmap.isNull():
+            self.set_placeholder_text(self._placeholder_text)
+            return
+        self._source_pixmap = pixmap
+        self._redraw_thumbnail()
         self._root.setCurrentWidget(self._thumbnail)
 
-    def _resolve_playback_path(
-        self, *, media_url: str | None, file_path: str | None
-    ) -> str | None:
+    def _redraw_thumbnail(self) -> None:
+        """Redraw the thumbnail at the size this tile currently gives it.
+
+        Placeholder text and placeholder icons are not scaled to the tile, so a
+        resize has to leave them alone.
+        """
+        if self._source_pixmap is None:
+            return
+        self._thumbnail.setPixmap(scale_to_fit(self._source_pixmap, self.size()))
+        self._thumbnail.setText("")
+
+    def _resolve_playback_path(self, *, media_url: str | None, file_path: str | None) -> str | None:
         """Find a local file to play, or None when hovering will have to download one.
 
         Both inputs are parameters rather than fields, so this cannot read state that
@@ -222,9 +235,7 @@ class HoverMediaPreview(QWidget):
             if path.is_file():
                 return str(path)
         if media_url:
-            cached = cached_file_for_base(
-                self._preview_cache.cache_base_for_url(media_url)
-            )
+            cached = cached_file_for_base(self._preview_cache.cache_base_for_url(media_url))
             if cached is not None:
                 return str(cached)
         return None
@@ -263,7 +274,7 @@ class HoverMediaPreview(QWidget):
         self._download_started = True
         UrlDownloadBroker.instance().request(
             url=self._media_url,
-            target_base=self._preview_cache.cache_base_for_url(self._media_url),
+            dest_base=self._preview_cache.cache_base_for_url(self._media_url),
             on_done=self._on_download_finished,
         )
 
@@ -282,23 +293,23 @@ class HoverMediaPreview(QWidget):
             self._hide_loading_overlay()
 
     def _start_preview(self, path: str) -> None:
-        if self._media_type == MediaType.VIDEO:
+        if self._media_type is MediaType.VIDEO:
             SharedVideoPreviewBackend.instance().play_for(self, path)
             return
-        if self._media_type == MediaType.GIF:
+        if self._media_type is MediaType.GIF:
             if self._movie is not None:
                 self._movie.stop()
             self._movie = QMovie(path)
             self._movie.setCacheMode(QMovie.CacheMode.CacheAll)
             self._movie.jumpToFrame(0)
-            target = inner_preview_edge(self._tile_size_px, reserved=self._reserved)
+            # Not '_gif_label's size: a stacked page that has never been in front
+            # has never been laid out.
+            slot = self.size()
             natural = self._movie.currentPixmap().size()
             if natural.isValid() and not natural.isEmpty():
-                self._movie.setScaledSize(
-                    natural.scaled(target, target, Qt.AspectRatioMode.KeepAspectRatio)
-                )
+                self._movie.setScaledSize(natural.scaled(slot, Qt.AspectRatioMode.KeepAspectRatio))
             else:
-                self._movie.setScaledSize(QSize(target, target))
+                self._movie.setScaledSize(slot)
             self._gif_label.setMovie(self._movie)
             self._hide_loading_overlay()
             self._root.setCurrentWidget(self._gif_label)
@@ -314,18 +325,14 @@ class HoverMediaPreview(QWidget):
         image = frame.toImage()
         if image.isNull():
             return
-        target = inner_preview_edge(self._tile_size_px, reserved=self._reserved)
-        pixmap = QPixmap.fromImage(image).scaled(
-            target,
-            target,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
+        # Not '_video_label's size: it may never have been laid out.
+        pixmap = scale_to_fit(QPixmap.fromImage(image), self.size())
         self._video_label.setPixmap(pixmap)
         self._hide_loading_overlay()
         if self._root.currentWidget() is not self._video_label:
             self._root.setCurrentWidget(self._video_label)
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._loading_overlay.resize(self.size())
+        self._redraw_thumbnail()

@@ -104,15 +104,15 @@ def group_label(group: str) -> str:
     return _GROUP_LABELS[group]
 
 
-def split_evenly(total: int, targets: list[str]) -> dict[str, int]:
-    """Split total across targets as evenly as possible, remainder goes left-to-right."""
-    if total <= 0 or not targets:
-        return {name: 0 for name in targets}
-    base = total // len(targets)
-    rem = total % len(targets)
+def split_evenly(total: int, keys: list[str]) -> dict[str, int]:
+    """Split total across keys as evenly as possible, remainder goes left-to-right."""
+    if total <= 0 or not keys:
+        return {key: 0 for key in keys}
+    base = total // len(keys)
+    rem = total % len(keys)
     out: dict[str, int] = {}
-    for i, name in enumerate(targets):
-        out[name] = base + (1 if i < rem else 0)
+    for i, key in enumerate(keys):
+        out[key] = base + (1 if i < rem else 0)
     return out
 
 
@@ -135,19 +135,15 @@ def build_search_distribution(*, limit: int, enabled: set[str]) -> dict[str, int
     return distribution
 
 
-def _safe_fetch(
-    key: str, *, query: str, limit: int, min_duration_s: float
-) -> list[SearchResult]:
+def _safe_fetch(key: str, *, query: str, limit: int, min_duration_s: float) -> list[SearchResult]:
     """Run one source, logging and returning nothing if it fails, so the rest still run."""
     provider = SEARCH_PROVIDERS[key]
     try:
-        if provider.media_type == MediaType.VIDEO:
-            return (
-                provider.fetch(query, limit=limit, min_duration_s=min_duration_s) or []
-            )
+        if provider.media_type is MediaType.VIDEO:
+            return provider.fetch(query, limit=limit, min_duration_s=min_duration_s) or []
         return provider.fetch(query, limit=limit) or []
-    except Exception as e:
-        print(f"[search] '{key}' fetch failed: {e}")
+    except Exception as exc:
+        print(f"[search] '{key}' fetch failed: {exc}")
         return []
 
 
@@ -180,11 +176,11 @@ def run_distributed_search(
             )
             for key, share in shares
         ]
-        per_source = [future.result() for future in futures]
+        per_provider = [future.result() for future in futures]
 
     merged: list[SearchResult] = []
     seen_urls: set[str] = set()
-    for results in per_source:
+    for results in per_provider:
         for result in results:
             if result.url in seen_urls:
                 continue

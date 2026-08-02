@@ -1,3 +1,5 @@
+"""Wrap fixed-size tiles into as many columns as a scroll area currently fits."""
+
 from collections.abc import Sequence
 
 from PySide6.QtWidgets import QGridLayout, QScrollArea, QWidget

@@ -1,16 +1,16 @@
+import hashlib
 import json
 import re
-import hashlib
 import shutil
 from collections.abc import Callable
 from pathlib import Path
 
-from core.json_io import save_json
-from core.models.project import Project
-from core.models.media import Media
 from config import PROJECTS_DIR
+from core.json_io import save_json
+from core.models.media import Media
+from core.models.project import Project
 from core.project_paths import INVALID_FILENAME_CHARS, ProjectPaths
-from core.word_tokenize import assert_segment_words_match_narration, normalize_text
+from core.word_tokenize import normalize_text, require_segment_words_match_narration
 from services.alignment_service import align_project_audio
 from services.llm_service import generate_segment_search_plan
 from services.media_download import download_media
@@ -40,7 +40,7 @@ def list_project_titles() -> list[str]:
     return sorted(item.name for item in root.iterdir() if item.is_dir())
 
 
-def get_next_project_title() -> str:
+def next_project_title() -> str:
     """Return first available Project_x title based on existing project folders."""
     root = PROJECTS_DIR
     max_index = 0
@@ -61,9 +61,7 @@ def is_project_title_unique(title: str) -> bool:
     normalized = title.strip().casefold()
     if not normalized or not root.exists():
         return True
-    return not any(
-        item.is_dir() and item.name.casefold() == normalized for item in root.iterdir()
-    )
+    return not any(item.is_dir() and item.name.casefold() == normalized for item in root.iterdir())
 
 
 def load_project(title: str) -> Project:
@@ -79,14 +77,11 @@ def _rel_path(paths: ProjectPaths, path: Path) -> str:
 
 
 def _write_segments_analyzed_file(
-    paths: ProjectPaths, segments: list[str], selected_model: str
+    paths: ProjectPaths, *, segments: list[str], selected_model: str
 ) -> None:
     segments_payload = {
         "available_sources": list(search_groups()),
-        "segments": [
-            {"id": idx, "text": text}
-            for idx, text in enumerate(segments, start=1)
-        ],
+        "segments": [{"id": idx, "text": text} for idx, text in enumerate(segments, start=1)],
     }
     analyzed_text = generate_segment_search_plan(
         json.dumps(segments_payload, ensure_ascii=False, indent=2),
@@ -100,6 +95,7 @@ def _write_segments_analyzed_file(
 
 def create_and_save_project(
     segments: list[str],
+    *,
     narration: str,
     title: str = "Untitled",
     auto_assign: bool = False,
@@ -125,7 +121,7 @@ def create_and_save_project(
     segments = [normalize_text(text.strip()) for text in segments]
 
     narration = normalize_text(narration.strip())
-    assert_segment_words_match_narration(narration, segments)
+    require_segment_words_match_narration(narration, segments)
     paths.narration_txt.write_text(narration, encoding="utf-8")
 
     status("Generating voiceover...")
@@ -141,14 +137,14 @@ def create_and_save_project(
     if auto_assign:
         status("Analyzing segments...")
         segment_texts = [seg.text for seg in project.segments]
-        _write_segments_analyzed_file(paths, segment_texts, selected_model)
+        _write_segments_analyzed_file(paths, segments=segment_texts, selected_model=selected_model)
     return project
 
 
-def _ensure_media_persisted(paths: ProjectPaths, segment_id: int, media: Media) -> None:
+def _ensure_media_persisted(paths: ProjectPaths, *, segment_id: int, media: Media) -> None:
     """Ensure media is persisted under media/ by modifying media object.
 
-    If media.url is set, downloads it into media/ and sets file_path to the result. 
+    If media.url is set, downloads it into media/ and sets file_path to the result.
     If media.file_path points outside media/, copies it into media/.
     """
     media_dir = paths.media_dir
@@ -249,7 +245,7 @@ def save_project(project: Project) -> Path:
         if seg.media is None:
             continue
         try:
-            _ensure_media_persisted(paths, seg.id, seg.media)
+            _ensure_media_persisted(paths, segment_id=seg.id, media=seg.media)
         except Exception:
             # Don't block saving the rest of the project on a single media failure
             continue

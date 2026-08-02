@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QMouseEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -35,7 +35,7 @@ def search_settings_state() -> SearchSettingsState:
     return _state
 
 
-def _ensure_at_least_one_source(actions: dict[str, QAction]) -> None:
+def _ensure_at_least_one_provider(actions: dict[str, QAction]) -> None:
     if _state.enabled:
         return
     action = actions[_FALLBACK_KEY]
@@ -48,7 +48,7 @@ def _ensure_at_least_one_source(actions: dict[str, QAction]) -> None:
 class _SearchSettingsMenu(QMenu):
     """Checkable actions toggle without dismissing the menu (standard QMenu closes on trigger)."""
 
-    def mouseReleaseEvent(self, event) -> None:
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             act = self.actionAt(event.pos())
             if act is not None and act.isEnabled() and act.isCheckable():
@@ -94,7 +94,7 @@ def _wire_parent_submenu_sync(parent: QAction, children: list[QAction]) -> None:
 
     syncing = False
 
-    def on_parent(checked: bool) -> None:
+    def _on_parent_toggled(checked: bool) -> None:
         nonlocal syncing
         if syncing:
             return
@@ -105,7 +105,7 @@ def _wire_parent_submenu_sync(parent: QAction, children: list[QAction]) -> None:
         finally:
             syncing = False
 
-    def on_child() -> None:
+    def _on_child_toggled() -> None:
         nonlocal syncing
         if syncing:
             return
@@ -115,9 +115,9 @@ def _wire_parent_submenu_sync(parent: QAction, children: list[QAction]) -> None:
         finally:
             syncing = False
 
-    parent.toggled.connect(on_parent)
+    parent.toggled.connect(_on_parent_toggled)
     for child in children:
-        child.toggled.connect(on_child)
+        child.toggled.connect(_on_child_toggled)
 
 
 def _add_group_row(menu: QMenu, *, group: str, keys: list[str]) -> dict[str, QAction]:
@@ -128,9 +128,7 @@ def _add_group_row(menu: QMenu, *, group: str, keys: list[str]) -> dict[str, QAc
     """
     if len(keys) == 1:
         key = keys[0]
-        action = _add_checkable(
-            menu, text=group_label(group), checked=key in _state.enabled
-        )
+        action = _add_checkable(menu, text=group_label(group), checked=key in _state.enabled)
         return {key: action}
 
     submenu = _SearchSettingsMenu(menu)
@@ -162,11 +160,11 @@ def build_search_settings_menu(parent: QWidget) -> QMenu:
 
     def sync_from_actions() -> None:
         _state.enabled = {key for key, act in actions.items() if act.isChecked()}
-        _ensure_at_least_one_source(actions)
+        _ensure_at_least_one_provider(actions)
 
     for action in actions.values():
         action.toggled.connect(lambda _: sync_from_actions())
     limit_spin.valueChanged.connect(lambda value: setattr(_state, "limit", int(value)))
 
-    _ensure_at_least_one_source(actions)
+    _ensure_at_least_one_provider(actions)
     return menu

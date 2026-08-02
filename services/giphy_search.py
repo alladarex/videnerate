@@ -1,4 +1,5 @@
 import urllib.parse
+from typing import Any
 
 from config import GIPHY_API_KEY
 from core.models.media import MediaType
@@ -13,7 +14,8 @@ from services.search_common import (
 SOURCE = "Giphy"
 
 
-def _pick_url(images: dict, *names: str) -> str | None:
+def _pick_first_url(images: dict[str, Any], *names: str) -> str | None:
+    """Return the url of the first named variant that has one."""
     for name in names:
         item = images.get(name)
         if not isinstance(item, dict):
@@ -43,8 +45,8 @@ def fetch_giphy_gif_results(query: str, *, limit: int = 10) -> list[SearchResult
     )
     try:
         payload = fetch_json(url, headers=VIDENERATE_HEADERS)
-    except Exception as e:
-        print(f"[{SOURCE}] fetch_giphy_gif_results failed for query '{q}': {e}")
+    except Exception as exc:
+        print(f"[{SOURCE}] fetch_giphy_gif_results failed for query '{q}': {exc}")
         return []
 
     items = payload.get("data") or []
@@ -56,8 +58,8 @@ def fetch_giphy_gif_results(query: str, *, limit: int = 10) -> list[SearchResult
         if not isinstance(images, dict):
             continue
 
-        gif_url = _pick_url(images, "original", "downsized", "fixed_width")
-        thumb_url = _pick_url(
+        gif_url = _pick_first_url(images, "original", "downsized", "fixed_width")
+        thumb_url = _pick_first_url(
             images,
             "fixed_width_small_still",
             "fixed_width_still",
@@ -67,7 +69,7 @@ def fetch_giphy_gif_results(query: str, *, limit: int = 10) -> list[SearchResult
         if not gif_url or not thumb_url:
             continue
 
-        thumb_bytes = fetch_bytes(thumb_url, headers=VIDENERATE_HEADERS, source=SOURCE)
+        thumb_bytes = fetch_bytes(thumb_url, headers=VIDENERATE_HEADERS, log_tag=SOURCE)
         if thumb_bytes:
             out.append(
                 SearchResult(

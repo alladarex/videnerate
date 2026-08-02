@@ -170,13 +170,13 @@ class ExportDialog(QDialog):
         self._finished_label.setText(f"Export complete.\n\nVideo saved to:\n{output_path}")
         self._stack.setCurrentIndex(2)
 
-    def _on_export_failed(self, error: Exception) -> None:
-        if isinstance(error, ExportCancelled):
+    def _on_export_failed(self, exc: Exception) -> None:
+        if isinstance(exc, ExportCancelled):
             self._on_export_cancelled()
             return
         self._reset_export_state()
         self.setWindowTitle("Export failed")
-        self._finished_label.setText(f"Export failed.\n\n{error}")
+        self._finished_label.setText(f"Export failed.\n\n{exc}")
         self._stack.setCurrentIndex(2)
 
     def _on_export_cancelled(self) -> None:

@@ -1,27 +1,24 @@
-from PySide6.QtCore import QEvent, QObject, Qt, Signal
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, Signal
+from PySide6.QtGui import QEnterEvent, QMouseEvent
 from PySide6.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from core.models.segment import Segment
-from ui.styles.qss import HIDE_SCROLLBARS, SEGMENT_TILE_EXTRA, TILE_FRAME
-from ui.widgets.hover_media_preview import HoverMediaPreview
 from ui.cache.segment_preview_cache import SegmentPreviewCache
-from ui.widgets.tile_frame import TileFrame
-from ui.utils.tile_pixmap import (
-    load_scaled_pixmap_from_path,
-)
+from ui.styles.qss import HIDE_SCROLLBARS, SEGMENT_TILE_EXTRA, TILE_FRAME
+from ui.utils.tile_pixmap import load_pixmap_from_path, scale_to_fit
 from ui.utils.ui_paths import icon_path
+from ui.widgets.hover_media_preview import HoverMediaPreview
+from ui.widgets.tile_frame import TileFrame
 
 
 class SegmentTile(TileFrame):
-
     clicked = Signal()
 
     def __init__(
         self,
         segment: Segment,
         *,
-        size_px: int = 180,
+        size_px: int,
         preview_cache: SegmentPreviewCache,
         parent: QWidget | None = None,
     ) -> None:
@@ -61,8 +58,6 @@ class SegmentTile(TileFrame):
         root.addWidget(header_scroll)
 
         self._media_preview = HoverMediaPreview(
-            tile_size_px=self._size_px,
-            reserved=40,
             placeholder_text="Thumbnail error",
             preview_cache=self._preview_cache,
             parent=self,
@@ -89,19 +84,19 @@ class SegmentTile(TileFrame):
             self.clicked.emit()
         super().mousePressEvent(event)
 
-    def enterEvent(self, event) -> None:
+    def enterEvent(self, event: QEnterEvent) -> None:
         super().enterEvent(event)
         self._media_preview.on_hover_enter()
 
-    def leaveEvent(self, event) -> None:
+    def leaveEvent(self, event: QEvent) -> None:
         super().leaveEvent(event)
         self._media_preview.on_hover_leave()
 
     def dispose(self) -> None:
         self._media_preview.dispose()
 
-    def set_thumbnail_bytes(self, data: bytes | None) -> None:
-        self._thumb_bytes = data
+    def set_thumbnail_bytes(self, thumb_bytes: bytes | None) -> None:
+        self._thumb_bytes = thumb_bytes
         self.refresh_media()
 
     def refresh_media(self) -> None:
@@ -114,7 +109,7 @@ class SegmentTile(TileFrame):
 
         The segment view runs the same ladder in 'SegmentViewGridController._sync_media_tile'.
         It has to store its remembered bytes per segment id because it reuses a single
-        preview widget for every segment. This view builds one tile per segment, 
+        preview widget for every segment. This view builds one tile per segment,
         so a plain field is enough.
         """
 
@@ -122,14 +117,24 @@ class SegmentTile(TileFrame):
 
         # 1) Empty state icon, no media is attached yet
         if media is None:
-            plus_path = icon_path("plus.png")
-            icon_edge = max(1, int(self._size_px * 0.35))
-            pixmap = load_scaled_pixmap_from_path(plus_path, icon_edge)
-            self._media_preview.clear_media()
-            self._media_preview.set_thumbnail_pixmap(pixmap)
-            if pixmap is None:
-                self._media_preview.set_placeholder_text("+")
+            self._show_empty_state()
             return
 
         # 2) The media itself, drawn from disk or from the bytes kept when it was attached
         self._media_preview.show_media(media, thumb_bytes=self._thumb_bytes)
+
+    def _show_empty_state(self) -> None:
+        """Show the 'add media' hint: a small plus icon, or a '+' if it will not load.
+
+        Deliberately a fraction of the tile, so it reads as a hint rather than
+        filling it the way a thumbnail does.
+        """
+        self._media_preview.clear_media()
+        pixmap = load_pixmap_from_path(icon_path("plus.png"))
+        if pixmap is None:
+            self._media_preview.set_placeholder_text("+")
+            return
+        icon_edge = max(1, int(self._size_px * 0.35))
+        self._media_preview.set_placeholder_pixmap(
+            scale_to_fit(pixmap, QSize(icon_edge, icon_edge))
+        )

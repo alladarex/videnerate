@@ -3,6 +3,7 @@
 Extract N evenly spaced frames from a video and stack them vertically
 (top = first frame, bottom = last). Requires ffmpeg and ffprobe on PATH.
 """
+
 from __future__ import annotations
 
 import argparse
