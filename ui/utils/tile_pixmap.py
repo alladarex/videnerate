@@ -12,10 +12,15 @@ from PySide6.QtGui import QPixmap
 from core.models.media import Media, MediaType
 from services.media_thumbnail import extract_video_frame_bytes
 from ui.cache.segment_preview_cache import SegmentPreviewCache
+from ui.utils.ui_paths import icon_path
 
 # Ceiling on a pixmap a widget keeps to redraw from. Saved media and ffmpeg video
 # frames are full resolution, so without this a tile holds megabytes to draw 200px.
 MAX_SOURCE_EDGE_PX = 512
+
+# Every icon is drawn at one size only, so the filename is the whole key. Failures
+# are stored too, so an unreadable icon is read once and not once per tile.
+_ICON_PIXMAP_CACHE: dict[str, QPixmap | None] = {}
 
 
 def scale_to_fit(pixmap: QPixmap, size: QSize) -> QPixmap:
@@ -50,6 +55,22 @@ def load_pixmap_from_path(path: Path) -> QPixmap | None:
     if pixmap.isNull():
         return None
     return _capped(pixmap)
+
+
+def cached_icon_pixmap(icon_filename: str, size: QSize) -> QPixmap | None:
+    """An icon from ui/assets/icons/ fitted to 'size', or None when it cannot be read.
+
+    Tiles are built and torn down every time the grid changes, so each icon is read
+    from disk once and then kept. What is kept is already scaled, and 'size' is not
+    part of the key, so asking for an icon at a second size returns the first one.
+    """
+    if icon_filename in _ICON_PIXMAP_CACHE:
+        return _ICON_PIXMAP_CACHE[icon_filename]
+    pixmap = load_pixmap_from_path(icon_path(icon_filename))
+    if pixmap is not None:
+        pixmap = scale_to_fit(pixmap, size)
+    _ICON_PIXMAP_CACHE[icon_filename] = pixmap
+    return pixmap
 
 
 def load_media_file_thumbnail(

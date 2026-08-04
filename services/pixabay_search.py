@@ -106,6 +106,7 @@ def fetch_pixabay_image_results(query: str, *, limit: int = 10) -> list[SearchRe
                     url=image_url,
                     thumb_bytes=thumb_bytes,
                     source=SOURCE,
+                    page_url=result.get("pageURL"),
                 )
             )
         if len(out) >= limit:
@@ -162,6 +163,7 @@ def fetch_pixabay_video_results(
                     url=video_url,
                     thumb_bytes=thumb_bytes,
                     source=SOURCE,
+                    page_url=result.get("pageURL"),
                 )
             )
         if len(out) >= limit:

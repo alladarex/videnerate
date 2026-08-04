@@ -97,6 +97,8 @@ def fetch_pexels_image_results(query: str, *, limit: int = 10) -> list[SearchRes
                     url=image_url,
                     thumb_bytes=thumb_bytes,
                     source=SOURCE,
+                    # 'url' on the payload is the page on Pexels, not the file.
+                    page_url=result.get("url"),
                 )
             )
         if len(out) >= limit:
@@ -145,6 +147,8 @@ def fetch_pexels_video_results(
                     url=video_url,
                     thumb_bytes=thumb_bytes,
                     source=SOURCE,
+                    # 'url' on the payload is the page on Pexels, not the file.
+                    page_url=result.get("url"),
                 )
             )
         if len(out) >= limit:

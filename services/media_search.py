@@ -13,7 +13,8 @@ from dataclasses import dataclass
 
 from core.models.media import MediaType
 from services.ddg_search import fetch_web_image_results
-from services.giphy_search import fetch_giphy_gif_results
+
+# from services.giphy_search import fetch_giphy_gif_results
 from services.pexels_search import (
     fetch_pexels_image_results,
     fetch_pexels_video_results,
@@ -51,12 +52,14 @@ SEARCH_PROVIDERS: dict[str, SearchProvider] = {
         media_type=MediaType.IMAGE,
         fetch=fetch_web_image_results,
     ),
-    "giphy": SearchProvider(
-        label="Giphy",
-        group="giphy",
-        media_type=MediaType.GIF,
-        fetch=fetch_giphy_gif_results,
-    ),
+    # Off until the "Powered By GIPHY" mark,
+    #  its API terms require is in place.
+    # "giphy": SearchProvider(
+    #     label="Giphy",
+    #     group="giphy",
+    #     media_type=MediaType.GIF,
+    #     fetch=fetch_giphy_gif_results,
+    # ),
     "pexels_video": SearchProvider(
         label="Video",
         group="pexels",

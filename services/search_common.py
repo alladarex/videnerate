@@ -33,12 +33,17 @@ class SearchResult:
     preview image shown on the tile, and 'source' is the credit displayed for the
     media and burned into the exported video: the provider name for stock media
     (Pexels, Pixabay, Giphy), or the page it was found on for web results.
+
+    'page_url' is where this item lives on the provider's own site. Pexels and
+    Pixabay both require their results to be credited with a link back, so the
+    result tile turns their mark into a link to this.
     """
 
     media_type: MediaType
     url: str
     thumb_bytes: bytes
     source: str
+    page_url: str | None = None
 
 
 def is_valid_http_url(value: object) -> bool:

@@ -1,7 +1,7 @@
 from collections.abc import Callable
 
 from PySide6.QtCore import QEvent, QSize, Qt, Signal
-from PySide6.QtGui import QEnterEvent, QHideEvent, QMouseEvent, QPixmap
+from PySide6.QtGui import QEnterEvent, QHideEvent, QMouseEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -12,12 +12,12 @@ from PySide6.QtWidgets import (
 from core.models.media import MediaType
 from services.search_common import SearchResult
 from ui.cache.segment_preview_cache import SegmentPreviewCache
-from ui.utils.tile_pixmap import load_pixmap_from_path, scale_to_fit
-from ui.utils.ui_paths import icon_path
+from ui.utils.tile_pixmap import cached_icon_pixmap
+from ui.widgets.attribution_badge import AttributionBadge
 from ui.widgets.hover_media_preview import HoverMediaPreview
 from ui.widgets.tile_frame import TileFrame
 
-_ICON_PIXMAP_CACHE: dict[str, QPixmap | None] = {}
+_TYPE_ICON_SIZE = QSize(16, 16)
 
 # Per media type: the badge icon, and the text shown when a thumbnail will not decode.
 _TILE_LOOK_BY_TYPE: dict[MediaType, tuple[str, str]] = {
@@ -27,22 +27,14 @@ _TILE_LOOK_BY_TYPE: dict[MediaType, tuple[str, str]] = {
 }
 
 
-def _cached_icon_pixmap(icon_filename: str) -> QPixmap | None:
-    cached = _ICON_PIXMAP_CACHE.get(icon_filename)
-    if cached is not None:
-        return cached
-    pixmap = load_pixmap_from_path(icon_path(icon_filename))
-    if pixmap is not None:
-        pixmap = scale_to_fit(pixmap, QSize(16, 16))
-    _ICON_PIXMAP_CACHE[icon_filename] = pixmap
-    return pixmap
-
-
 class _ResultTile(TileFrame):
     """One search result: a media-type badge above a preview of the result itself.
 
     Images use 'HoverMediaPreview' too, though they have nothing to hover, so all
     three types share one drawing path.
+
+    The top row carries the media-type icon on the left and, for results from a
+    provider that has to be credited, its clickable mark on the right.
     """
 
     clicked = Signal()
@@ -56,6 +48,8 @@ class _ResultTile(TileFrame):
         url: str,
         preview_cache: SegmentPreviewCache,
         media_type: MediaType,
+        source: str,
+        page_url: str | None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(size_px=size_px, parent=parent, hover_shadow=True)
@@ -73,7 +67,7 @@ class _ResultTile(TileFrame):
         self._icon_label.setFixedSize(18, 18)
         self._icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._icon_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        icon = _cached_icon_pixmap(icon_filename)
+        icon = cached_icon_pixmap(icon_filename, _TYPE_ICON_SIZE)
         if icon is not None:
             self._icon_label.setPixmap(icon)
             self._icon_label.setText("")
@@ -83,6 +77,12 @@ class _ResultTile(TileFrame):
             self._icon_label, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
         )
         icon_row.addStretch(1)
+
+        self._attribution = AttributionBadge(self)
+        self._attribution.set_source(source, page_url=page_url)
+        icon_row.addWidget(
+            self._attribution, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop
+        )
         root.addLayout(icon_row, 0)
 
         content_host = QWidget(self)
@@ -140,6 +140,8 @@ def build_result_tile(
         url=result.url,
         preview_cache=preview_cache,
         media_type=result.media_type,
+        source=result.source,
+        page_url=result.page_url,
         parent=parent,
     )
     tile.set_thumbnail_bytes(result.thumb_bytes)
