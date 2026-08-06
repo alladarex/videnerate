@@ -1,7 +1,5 @@
 """Build a word-level timeline from voiceover audio and narration text."""
 
-from __future__ import annotations
-
 import difflib
 from pathlib import Path
 

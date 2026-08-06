@@ -2,6 +2,7 @@ from PySide6.QtCore import Signal, Slot
 from PySide6.QtWidgets import QMainWindow, QMessageBox, QStackedWidget
 
 from core.models.project import Project
+from core.models.search_plan import SearchPlan
 from services.llm_service import generate_narration, generate_segments
 from services.project_service import (
     create_and_save_project,
@@ -189,11 +190,11 @@ class StartWindow(QMainWindow):
         selected_model = self._narration_view.selected_model()
         auto_assign = self._narration_view.is_auto_assign_checked()
 
-        def create_project() -> Project:
+        def create_project() -> tuple[Project, SearchPlan | None]:
             self.status_changed.emit("Segmenting narration...")
             segments = generate_segments(narration, selected_model=selected_model)
             return create_and_save_project(
-                segments,
+                segments=segments,
                 title=project_title,
                 narration=narration,
                 auto_assign=auto_assign,
@@ -207,10 +208,11 @@ class StartWindow(QMainWindow):
             on_error=self._on_project_failed,
         )
 
-    def _on_project_created(self, project: Project) -> None:
+    def _on_project_created(self, created: tuple[Project, SearchPlan | None]) -> None:
+        project, search_plan = created
         self._is_creating_project = False
         self._narration_view.set_loading(False)
-        self._project_window = ProjectWindow(project)
+        self._project_window = ProjectWindow(project, search_plan=search_plan)
         self._project_window.showMaximized()
         self.close()
 

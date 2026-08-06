@@ -187,10 +187,10 @@ class SegmentViewGridController(QObject):
 
         settings = search_settings_state()
         limit = settings.limit
-        enabled = set(settings.enabled)
+        providers = set(settings.enabled)
 
         # Should be unreachable, search settings should always have at least one enabled source
-        if not enabled:
+        if not providers:
             self._set_search_loading(False, "Enable at least one supported source first.")
             return
 
@@ -207,7 +207,7 @@ class SegmentViewGridController(QObject):
             lambda: run_distributed_search(
                 query,
                 limit=limit,
-                enabled=enabled,
+                providers=providers,
                 min_duration_s=min_duration_s,
             ),
             on_success=lambda results: self._on_search_finished(segment_id, query, results),

@@ -3,18 +3,19 @@ import json
 import re
 import shutil
 from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 from config import PROJECTS_DIR
 from core.json_io import save_json
 from core.models.media import Media
 from core.models.project import Project
+from core.models.search_plan import SearchPlan
 from core.project_paths import INVALID_FILENAME_CHARS, ProjectPaths
 from core.word_tokenize import normalize_text, require_segment_words_match_narration
 from services.alignment_service import align_project_audio
 from services.llm_service import generate_segment_search_plan
 from services.media_download import download_media
-from services.media_search import search_groups
 from services.voiceover_service import generate_voiceover_mp3
 
 
@@ -76,33 +77,21 @@ def _rel_path(paths: ProjectPaths, path: Path) -> str:
     return path.resolve().relative_to(paths.root.resolve()).as_posix()
 
 
-def _write_segments_analyzed_file(
-    paths: ProjectPaths, *, segments: list[str], selected_model: str
-) -> None:
-    segments_payload = {
-        "available_sources": list(search_groups()),
-        "segments": [{"id": idx, "text": text} for idx, text in enumerate(segments, start=1)],
-    }
-    analyzed_text = generate_segment_search_plan(
-        json.dumps(segments_payload, ensure_ascii=False, indent=2),
-        selected_model=selected_model,
-    )
-    paths.segments_analyzed_json.write_text(
-        analyzed_text,
-        encoding="utf-8",
-    )
-
-
 def create_and_save_project(
-    segments: list[str],
     *,
+    segments: list[str],
     narration: str,
+    selected_model: str,
     title: str = "Untitled",
     auto_assign: bool = False,
-    selected_model: str = "deepseek-reasoner",
     on_status: Callable[[str], None] | None = None,
-) -> Project:
-    """Create a new project and save it to the filesystem."""
+) -> tuple[Project, SearchPlan | None]:
+    """Create a new project and save it to the filesystem.
+
+    'selected_model' plans the media search, so it only matters under auto-assign.
+    The plan comes back alongside the project, and is None whenever auto-assign is
+    off or the planning call failed.
+    """
 
     if not narration:
         raise ValueError("Narration is required.")
@@ -121,12 +110,27 @@ def create_and_save_project(
     segments = [normalize_text(text.strip()) for text in segments]
 
     narration = normalize_text(narration.strip())
+    # LLM can return segments that don't match the narration
     require_segment_words_match_narration(narration, segments)
     paths.narration_txt.write_text(narration, encoding="utf-8")
 
+    project = Project.from_segment_texts(segments, title=dir_name)
+
+    # Planning only needs the segment texts, so it runs while everything below does.
+    # The pool is here for the Future, not for concurrency: a bare thread would drop
+    # both the return value and the exception.
+    plan_future: Future[SearchPlan] | None = None
+    if auto_assign:
+        planner = ThreadPoolExecutor(max_workers=1)
+        plan_future = planner.submit(
+            generate_segment_search_plan,
+            {seg.id: seg.text for seg in project.segments},
+            selected_model=selected_model,
+        )
+        planner.shutdown(wait=False)
+
     status("Generating voiceover...")
     generate_voiceover_mp3(narration, paths.voiceover_mp3)
-    project = Project.from_segment_texts(segments, title=dir_name)
 
     status("Aligning audio to narration...")
     align_project_audio(project)
@@ -134,11 +138,19 @@ def create_and_save_project(
     status("Saving project...")
     save_json(paths.project_json, project.to_dict())
 
-    if auto_assign:
+    plan: SearchPlan | None = None
+    if plan_future is not None:
         status("Analyzing segments...")
-        segment_texts = [seg.text for seg in project.segments]
-        _write_segments_analyzed_file(paths, segments=segment_texts, selected_model=selected_model)
-    return project
+        try:
+            plan = plan_future.result()
+        except Exception as exc:
+            # Auto-assign is optional, so a failed plan must not fail the project.
+            print(f"[project_service] search plan unavailable: {exc}")
+
+    if plan is not None:
+        # Written for the user to read. The app never loads it back.
+        save_json(paths.search_plan_json, plan.to_dict())
+    return project, plan
 
 
 def _ensure_media_persisted(paths: ProjectPaths, *, segment_id: int, media: Media) -> None:

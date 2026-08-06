@@ -119,16 +119,16 @@ def split_evenly(total: int, keys: list[str]) -> dict[str, int]:
     return out
 
 
-def build_search_distribution(*, limit: int, enabled: set[str]) -> dict[str, int]:
-    """Decide how many results each enabled source should return.
+def build_search_distribution(*, limit: int, providers: set[str]) -> dict[str, int]:
+    """Decide how many results each provider being searched should return.
 
-    Every enabled group gets an equal share of the limit, and the sources within a
-    group then divide that share, so turning on both Pexels rows does not give Pexels
+    Every group represented gets an equal share of the limit, and the providers within
+    a group then divide that share, so searching both Pexels rows does not give Pexels
     twice the space of the web row.
     """
     active_by_group: dict[str, list[str]] = {}
     for key, provider in SEARCH_PROVIDERS.items():
-        if key in enabled:
+        if key in providers:
             active_by_group.setdefault(provider.group, []).append(key)
 
     group_shares = split_evenly(limit, list(active_by_group))
@@ -154,16 +154,19 @@ def run_distributed_search(
     query: str,
     *,
     limit: int,
-    enabled: set[str],
+    providers: set[str],
     min_duration_s: float,
 ) -> list[SearchResult]:
-    """Search every enabled source at once and merge the hits into one list.
+    """Search every given provider at once and merge the hits into one list.
+
+    Which providers those are is the caller's business: manual search passes the rows
+    the user ticked, auto-assign passes the ones its planned source maps to.
 
     Duplicate URLs are dropped and the merge stops at limit, keeping registry order so
     the tiles stay grouped by source. Videos shorter than min_duration_s are left out
-    by the video sources themselves.
+    by the video providers themselves.
     """
-    distribution = build_search_distribution(limit=limit, enabled=enabled)
+    distribution = build_search_distribution(limit=limit, providers=providers)
     shares = [(key, share) for key, share in distribution.items() if share > 0]
     if not shares:
         return []

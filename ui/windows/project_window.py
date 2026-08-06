@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.models.project import Project
+from core.models.search_plan import SearchPlan
 from core.models.segment import Segment
 from core.project_paths import ProjectPaths
 from services.project_service import save_project
@@ -31,10 +32,10 @@ from ui.widgets.voiceover_playback import VoiceoverPlaybackController
 class ProjectWindow(QMainWindow):
     _BAR_HEIGHT_PX = 56
 
-    def __init__(self, project: Project) -> None:
+    def __init__(self, project: Project, *, search_plan: SearchPlan | None = None) -> None:
         super().__init__()
         self._project = project
-        # UI-only: the preview cache and voiceover player need file paths, not a Project
+        self._search_plan = search_plan
         self._paths = ProjectPaths.from_title(project.title)
         self._voiceover_btn: QPushButton | None = None
         self._stack: QStackedWidget | None = None
@@ -58,6 +59,10 @@ class ProjectWindow(QMainWindow):
 
         self._build_ui()
         self._sync_playback_button()
+
+        # Auto-assign is a segment-by-segment flow, so skip the project grid entirely.
+        if self._search_plan is not None and self._project.segments:
+            self._open_segment_view(self._project.segments[0])
 
         save_shortcut = QShortcut(QKeySequence.StandardKey.Save, self)
         save_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
@@ -230,6 +235,9 @@ class ProjectWindow(QMainWindow):
         self._segment_view.release_preview_resources()
         self._preview_cache.clear()
         self._stack.setCurrentIndex(0)
+        # A stacked widget only lays out the page it is showing, so any resize that
+        # happened while the segment view was up left this grid's viewport stale
+        self._relayout_segments_grid()
 
     def _on_media_selected(self, segment_id: int, thumb_bytes: bytes) -> None:
         """Update matching project tile thumbnail after media selection in detail view."""

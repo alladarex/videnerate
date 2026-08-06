@@ -11,7 +11,9 @@ MEDIA_DIR = "media"
 PROJECT_JSON_FILENAME = "project.json"
 NARRATION_FILENAME = "narration.txt"
 WORD_TIMELINE_FILENAME = "word_timeline.json"
-SEGMENTS_ANALYZED_FILENAME = "segments-analyzed.json"
+# Written for the user to read, never loaded back: auto-assign runs once, at creation,
+# and its proposals do not outlive the window. Cheap to ask for again if that changes.
+SEARCH_PLAN_FILENAME = "search_plan.json"
 VOICEOVER_FILENAME = "voiceover.mp3"
 EXPORT_FILENAME = "export.mp4"
 EXPORT_TMP_FILENAME = "export.tmp.mp4"
@@ -58,8 +60,8 @@ class ProjectPaths:
         return self.root / WORD_TIMELINE_FILENAME
 
     @property
-    def segments_analyzed_json(self) -> Path:
-        return self.root / SEGMENTS_ANALYZED_FILENAME
+    def search_plan_json(self) -> Path:
+        return self.root / SEARCH_PLAN_FILENAME
 
     @property
     def media_dir(self) -> Path:

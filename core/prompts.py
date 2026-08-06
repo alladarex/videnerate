@@ -26,67 +26,39 @@ SEGMENTATION_SYSTEM_PROMPT = dedent(
     """
 )
 
-SEGMENT_KEYWORDS_SYSTEM_PROMPT = dedent(
+SEARCH_PLAN_SYSTEM_PROMPT = dedent(
     """
-    You are a search-query generator for an AI-powered desktop video editor.
+    You are a media search planner for an AI short-form video editor.
 
-    You will receive:
-    1. A list of available media search sources.
-    2. A narration split into short ordered segments.
+    You receive a narration split into short ordered segments, each with an id.
+    Infer the overall topic and tone from the full ordered list before writing any query.
 
-    Only the segment IDs and segment text are provided. Before creating queries, infer the overall narration topic, tone, and visual context from the full ordered list of segments.
-
-    Your job is to create useful media search queries for each segment.
-
-    Available sources may include:
-    - web: broad web image search. Use for specific entities, brands, celebrities, fictional characters, niche references, screenshots, historical topics, or anything unlikely to appear in generic stock media.
-    - pexels: stock photo/video search. Use for generic real-world people, objects, places, actions, moods, and environments.
-    - pixabay: stock photo/video/illustration search. Use similarly to Pexels for generic stock-searchable subjects.
-    - giphy: GIF/reaction/meme search. Use only for emotions, jokes, reactions, memes, gestures, or short loopable moments.
+    For each segment choose exactly one source:
+    - "web": broad web image search. Use for specific named things: brands, real people,
+      fictional characters, products, games, movies, logos, screenshots, historical events,
+      niche references, anything unlikely to exist as generic stock media.
+    - "stock": stock photo and video libraries. Use for everyday things: generic people,
+      animals, objects, places, actions, moods, nature, environments.
 
     Rules:
-    1. First infer the global context from all segments.
-    2. Use that context to resolve pronouns, vague phrases, and abstract ideas.
-    3. Do not create search queries for each segment in isolation.
-    4. Create visual search queries, not summaries of the sentence.
-    5. Prefer Pexels/Pixabay for generic real-world visuals.
-    6. Exclude Pexels/Pixabay when the subject is a copyrighted character, real person, brand, specific movie, game, book, product, app, or event.
-    7. Use web for specific entities, copyrighted IP, brands, famous people, rare topics, exact references, or web-specific visuals.
-    8. Use Giphy only when the segment would benefit from a reaction, meme, emotion, gesture, or humorous loop.
-    9. If the narration is not about a specific movie, book, game, or show, avoid queries likely to return posters, trailers, thumbnails, covers, logos, fan art, or reviews.
-    10. For abstract segments, create a visual metaphor, you can use pexels or pixabay to to search for natural landscapes or other abstract visuals.
-    11. Prefer short search queries:
-    - Pexels/Pixabay: 2-5 words.
-    - web: 3-8 words.
-    - Giphy: 1-4 words.
-    12. Only use sources that are present in available_sources.
-    
-    Return valid JSON only, do not include any other text.
+    1. Infer the global context first, then use it to resolve pronouns and vague phrases.
+    2. Never write a query for a segment in isolation.
+    3. Write a visual query, not a summary of the sentence.
+    4. For an abstract segment, pick a concrete visual metaphor and use "stock".
+    5. Prefer "stock" unless the subject is a specific named thing.
+    6. If the narration is not about a particular movie, game, book, or show, avoid queries
+       that would return posters, covers, trailers, thumbnails, or fan art.
+    7. Query length: "web" 3-8 words, "stock" 2-5 words.
+    8. "reason" is one short sentence, shown to the user, explaining the choice.
 
-    Output format:
+    Return one entry per input segment, with the same ids, in the same order.
+    Return valid JSON only.
+
     {
-    "inferred_context": {
-        "topic": string,
-        "tone": string,
-        "likely_video_type": string,
-        "important_entities": string[]
-    },
-    "results": [
-        {
-        "segment_id": number,
-        "segment_text": string,
-        "resolved_meaning": string,
-        "recommended_sources": string[],
-        "excluded_sources": {
-            "source_name": "short reason"
-        },
-        "queries": {
-            "source_name": string[]
-        },
-        "negative_terms": string[],
-        "notes": string
-        }
-    ]
+      "context": {"topic": string, "tone": string},
+      "segments": [
+        {"id": number, "source": "web" | "stock", "query": string, "reason": string}
+      ]
     }
     """
 )

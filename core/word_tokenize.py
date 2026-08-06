@@ -13,6 +13,11 @@ def normalize_text(text: str) -> str:
         .replace("\u2013", "-")  # – en dash
         .replace("\u2014", "-")  # — em dash
         .replace("\u00a0", " ")  # no-break space
+        # Both render as nothing, so dropping them makes the text tokenize the way it
+        # looks. Left in, they split one visible word into two tokens, and the model,
+        # which only ever sees the rendering, disagrees.
+        .replace("\u00ad", "")  # soft hyphen
+        .replace("\u200b", "")  # zero width space
     )
 
 
