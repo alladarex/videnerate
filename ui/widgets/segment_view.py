@@ -27,13 +27,11 @@ from ui.cache.segment_search_cache import SegmentSearchCache
 from ui.styles.qss import (
     ACTION_BUTTON,
     ICON_CLOSE_BUTTON,
-    NAV_ARROW_BUTTON,
     SECTION_TITLE_LABEL,
     TITLE_LABEL,
-    TRANSPARENT_SCROLL,
-    nav_dot_style,
     top_bar_style,
 )
+from ui.widgets.segment_nav_bar import SegmentNavBar
 from ui.widgets.segment_view_grid import SegmentViewGridController
 from ui.widgets.voiceover_playback import VoiceoverPlaybackController
 
@@ -54,8 +52,6 @@ class SegmentView(QWidget):
     media_selected = Signal(int, bytes)
 
     _BAR_HEIGHT_PX = 56
-    _DOT_PX = 12
-    _DOT_GAP_PX = 5
 
     def __init__(
         self,
@@ -93,13 +89,10 @@ class SegmentView(QWidget):
         self._search_cache = SegmentSearchCache()
         self._grid_controller: SegmentViewGridController
 
-        self._nav_prev: QPushButton | None = None
-        self._nav_next: QPushButton | None = None
-        self._dots_scroll: QScrollArea | None = None
-        self._dot_buttons: list[QPushButton] = []
+        self._nav_bar: SegmentNavBar
         self._play_btn: QPushButton | None = None
 
-        # Needed when segment view is accessible without a prior mouse click in project view
+        # Prevents activating "Back to project" when clicking space
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self._text_label = QLabel(self)
@@ -211,74 +204,26 @@ class SegmentView(QWidget):
             QSizePolicy.Policy.Minimum,
         )
 
-        bottom_row = QFrame(self)
-        bottom_row.setObjectName("SegmentViewBottomBar")
-        bottom_row.setFixedHeight(self._BAR_HEIGHT_PX)
-        bottom_row.setStyleSheet(top_bar_style("SegmentViewBottomBar"))
-        bottom_inner = QHBoxLayout(bottom_row)
-        bottom_inner.setContentsMargins(10, 8, 10, 8)
-        bottom_inner.setSpacing(8)
-
-        self._nav_prev = QPushButton("‹", bottom_row)
-        self._nav_prev.setObjectName("SegmentNavArrow")
-        self._nav_prev.setFixedSize(36, 36)
-        self._nav_prev.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._nav_prev.setStyleSheet(NAV_ARROW_BUTTON)
-        self._nav_prev.setToolTip("Previous segment")
-        self._nav_prev.clicked.connect(self._go_prev)
-
-        self._dots_scroll = QScrollArea(bottom_row)
-        self._dots_scroll.setWidgetResizable(True)
-        self._dots_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self._dots_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._dots_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self._dots_scroll.setStyleSheet(TRANSPARENT_SCROLL)
-
-        dots_host = QWidget(self._dots_scroll)
-        dots_layout = QHBoxLayout(dots_host)
-        dots_layout.setContentsMargins(4, 0, 4, 0)
-        dots_layout.setSpacing(self._DOT_GAP_PX)
-        dots_layout.addStretch(0)
-
-        for i, seg in enumerate(self._project.segments):
-            btn = QPushButton(dots_host)
-            btn.setObjectName("SegmentNavDot")
-            btn.setFixedSize(self._DOT_PX, self._DOT_PX)
-            btn.setFlat(True)
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setToolTip(seg.text)
-            btn.clicked.connect(lambda checked=False, idx=i: self._go_to_index(idx))
-            dots_layout.addWidget(btn)
-            self._dot_buttons.append(btn)
-
-        dots_layout.addStretch(0)
-        self._dots_scroll.setWidget(dots_host)
-
-        self._nav_next = QPushButton("›", bottom_row)
-        self._nav_next.setObjectName("SegmentNavArrow")
-        self._nav_next.setFixedSize(36, 36)
-        self._nav_next.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._nav_next.setStyleSheet(NAV_ARROW_BUTTON)
-        self._nav_next.setToolTip("Next segment")
-        self._nav_next.clicked.connect(self._go_next)
-
-        bottom_inner.addWidget(self._nav_prev)
-        bottom_inner.addWidget(self._dots_scroll, 1)
-        bottom_inner.addWidget(self._nav_next)
+        self._nav_bar = SegmentNavBar(
+            segments=self._project.segments,
+            bar_height_px=self._BAR_HEIGHT_PX,
+            parent=self,
+        )
+        self._nav_bar.index_requested.connect(self._go_to_index)
 
         sc_left = QShortcut(QKeySequence(Qt.Key.Key_Left), self)
         sc_left.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
-        sc_left.activated.connect(self._go_prev)
+        sc_left.activated.connect(self._nav_bar.go_prev)
         sc_right = QShortcut(QKeySequence(Qt.Key.Key_Right), self)
         sc_right.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
-        sc_right.activated.connect(self._go_next)
+        sc_right.activated.connect(self._nav_bar.go_next)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(20, 20, 20, 20)
         root.setSpacing(12)
         root.addWidget(top_row)
         root.addWidget(self._scroll, 1)
-        root.addWidget(bottom_row)
+        root.addWidget(self._nav_bar)
 
         self._grid_controller.relayout_grid()
         self._refresh_nav_display()
@@ -378,9 +323,6 @@ class SegmentView(QWidget):
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         self._grid_controller.relayout_grid()
-        # Needed for arrow-key navigation when segment view is accessed
-        # without a prior mouse click in project view
-        self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
@@ -389,17 +331,6 @@ class SegmentView(QWidget):
     def release_preview_resources(self) -> None:
         """Release transient preview resources for segment view."""
         self._grid_controller.release_preview_resources()
-
-    def _go_prev(self) -> None:
-        if self._current_index <= 0:
-            return
-        self._go_to_index(self._current_index - 1)
-
-    def _go_next(self) -> None:
-        n = len(self._project.segments)
-        if n == 0 or self._current_index >= n - 1:
-            return
-        self._go_to_index(self._current_index + 1)
 
     def _go_to_index(self, index: int) -> None:
         """Navigate to a specific segment index and refresh related UI state."""
@@ -423,10 +354,7 @@ class SegmentView(QWidget):
         return "idle"  # gray
 
     def _refresh_dots(self) -> None:
-        for i, (seg, btn) in enumerate(zip(self._project.segments, self._dot_buttons)):
-            btn.setStyleSheet(
-                nav_dot_style(self._dot_state(seg), is_current=i == self._current_index)
-            )
+        self._nav_bar.update_dots([self._dot_state(seg) for seg in self._project.segments])
 
     def _has_auto_work_left(self) -> bool:
         """An entry, delivered or user-made, is what retires a planned segment."""
@@ -453,19 +381,8 @@ class SegmentView(QWidget):
         seg = self._project.segments[self._current_index] if n else None
         self._text_label.setText("" if seg is None else seg.text)
 
+        self._nav_bar.set_current_index(self._current_index)
         self._refresh_dots_hint_and_stop_btn()
-
-        if self._nav_prev is not None:
-            self._nav_prev.setEnabled(n > 0 and self._current_index > 0)
-        if self._nav_next is not None:
-            self._nav_next.setEnabled(n > 0 and self._current_index < n - 1)
-
-        if (
-            self._dots_scroll is not None
-            and self._dot_buttons
-            and self._current_index < len(self._dot_buttons)
-        ):
-            self._dots_scroll.ensureWidgetVisible(self._dot_buttons[self._current_index])
 
         self._voiceover.on_active_segment_changed(self.current_segment.id)
         self._sync_playback_button()
