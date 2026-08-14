@@ -1,3 +1,5 @@
+from html import escape
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QKeySequence, QResizeEvent, QShortcut, QShowEvent
 from PySide6.QtWidgets import (
@@ -13,24 +15,36 @@ from PySide6.QtWidgets import (
 )
 
 from core.models.project import Project
+from core.models.search_plan import SearchPlan
 from core.models.segment import Segment
 from core.models.word_timeline import load_word_timeline, segment_playback_bounds
 from core.project_paths import ProjectPaths
+from services.media_suggestions import SegmentSuggestions, SuggestionEngine
 from services.project_service import save_project
+from services.vision_ranking import Suggestion
 from ui.cache.segment_preview_cache import SegmentPreviewCache
 from ui.cache.segment_search_cache import SegmentSearchCache
 from ui.styles.qss import (
     ACTION_BUTTON,
     ICON_CLOSE_BUTTON,
     NAV_ARROW_BUTTON,
-    NAV_DOT_ACTIVE,
-    NAV_DOT_INACTIVE,
+    SECTION_TITLE_LABEL,
     TITLE_LABEL,
     TRANSPARENT_SCROLL,
+    nav_dot_style,
     top_bar_style,
 )
 from ui.widgets.segment_view_grid import SegmentViewGridController
 from ui.widgets.voiceover_playback import VoiceoverPlaybackController
+
+
+def _suggestions_tooltip(suggestions: list[Suggestion]) -> str:
+    """Text rundown of each proposal: what it shows and why it was picked."""
+    rows = [
+        f"<b>{i}. {escape(s.description)}</b><br>{escape(s.reason)}"
+        for i, s in enumerate(suggestions, start=1)
+    ]
+    return "<br><br>".join(rows)
 
 
 class SegmentView(QWidget):
@@ -52,6 +66,7 @@ class SegmentView(QWidget):
         grid_spacing: int,
         preview_cache: SegmentPreviewCache,
         voiceover: VoiceoverPlaybackController,
+        search_plan: SearchPlan | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -62,6 +77,15 @@ class SegmentView(QWidget):
         self._tile_size_px = tile_size_px
         self._grid_spacing = grid_spacing
         self._current_index = 0
+
+        self._search_plan = search_plan
+        self._suggestion_engine: SuggestionEngine | None = None
+        # Segment ids the engine is working on right now, used by the search locking,
+        # the navigation dot, and the "Finding media…" status
+        self._auto_searching_segment_ids: set[int] = set()
+        # The engine stops the work. This stops rendering events that were already
+        # handed to the Qt queue before Stop was clicked
+        self._auto_search_stopped = False
 
         self._scroll: QScrollArea | None = None
         self._grid_host: QWidget | None = None
@@ -75,7 +99,7 @@ class SegmentView(QWidget):
         self._dot_buttons: list[QPushButton] = []
         self._play_btn: QPushButton | None = None
 
-        # Needed if segment view is accessible without a prior mouse click in project view
+        # Needed when segment view is accessible without a prior mouse click in project view
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self._text_label = QLabel(self)
@@ -107,6 +131,22 @@ class SegmentView(QWidget):
         self._play_btn.setStyleSheet(ACTION_BUTTON)
         self._play_btn.clicked.connect(self._toggle_segment_voiceover)
 
+        # Visible only while the active segment has suggestions, its tooltip says
+        # what each one is and why it was picked
+        self._suggestions_hint = QLabel("?", self)
+        self._suggestions_hint.setFixedSize(24, 24)
+        self._suggestions_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._suggestions_hint.setStyleSheet(SECTION_TITLE_LABEL)
+        self._suggestions_hint.setVisible(False)
+
+        self._stop_auto_search_btn = QPushButton("Stop auto-search", self)
+        self._stop_auto_search_btn.setFixedHeight(36)
+        self._stop_auto_search_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._stop_auto_search_btn.setToolTip("Abandon the remaining auto-assign searches")
+        self._stop_auto_search_btn.setStyleSheet(ACTION_BUTTON)
+        self._stop_auto_search_btn.setVisible(False)
+        self._stop_auto_search_btn.clicked.connect(self._on_stop_auto_search_clicked)
+
         top_row = QFrame(self)
         top_row.setObjectName("SegmentViewTopBar")
         top_row.setFixedHeight(self._BAR_HEIGHT_PX)
@@ -115,6 +155,14 @@ class SegmentView(QWidget):
         top_inner.setContentsMargins(14, 8, 10, 8)
         top_inner.setSpacing(12)
         top_inner.addWidget(self._text_label, 1)
+        top_inner.addWidget(
+            self._suggestions_hint, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        top_inner.addWidget(
+            self._stop_auto_search_btn,
+            0,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+        )
         top_inner.addWidget(
             self._play_btn, 0, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
@@ -149,8 +197,11 @@ class SegmentView(QWidget):
             grid_spacing=self._grid_spacing,
             search_cache=self._search_cache,
             preview_cache=preview_cache,
-            on_media_selected=lambda segment_id, b: self.media_selected.emit(segment_id, b),
+            on_media_selected=self._on_media_selected,
             word_timeline=self._word_timeline,
+            is_segment_running=lambda segment_id: segment_id in self._auto_searching_segment_ids,
+            on_manual_search_started=self._on_manual_search_started,
+            on_results_changed=self._refresh_dots_hint_and_stop_btn,
         )
         self._grid_controller.set_segment(self.current_segment)
 
@@ -236,6 +287,65 @@ class SegmentView(QWidget):
     def current_segment(self) -> Segment:
         return self._project.segments[self._current_index]
 
+    def set_suggestion_engine(self, engine: SuggestionEngine) -> None:
+        self._suggestion_engine = engine
+
+    # Both engine callbacks below touch Qt widgets, so they must be called on the main thread.
+    # 'ProjectWindow' hands them over with 'call_on_main_thread',
+    # so nothing here needs to (whatever 'media_suggestions' says about its workers).
+
+    def suggestions_started(self, segment_id: int) -> None:
+        """A worker took this segment."""
+        # Two ways this event no longer applies:
+        # 1. Stop was pressed
+        # 2. The user already run a manual search (segment_id got added to cache)
+        # The cache entry is written on click, so point 2 also covers a 'skip'
+        # that reached the engine after a manual search worker started a search.
+        if self._auto_search_stopped or self._search_cache.get(segment_id) is not None:
+            return
+        self._auto_searching_segment_ids.add(segment_id)
+        self._refresh_dots()
+        if segment_id == self.current_segment.id and self.isVisible():
+            self._grid_controller.reload()
+
+    def suggestions_ready(self, segment_suggestions: SegmentSuggestions) -> None:
+        """Proposals for this segment, or a failure.
+
+        Since the search and vision calls were already paid for,
+        suggestions can still arive after Stop is clicked.
+        """
+        segment_id = segment_suggestions.segment_id
+        self._auto_searching_segment_ids.discard(segment_id)
+        if self._search_cache.get(segment_id) is None:
+            self._search_cache.set(
+                segment_id,
+                query=segment_suggestions.query,
+                results=[s.result for s in segment_suggestions.suggestions],
+                suggestions=segment_suggestions.suggestions,
+                error=segment_suggestions.error,
+            )
+        self._refresh_dots_hint_and_stop_btn()
+        if segment_id == self.current_segment.id and self.isVisible():
+            self._grid_controller.reload()
+
+    def _on_stop_auto_search_clicked(self) -> None:
+        self._auto_search_stopped = True
+        self._suggestion_engine.cancel()
+        self._auto_searching_segment_ids.clear()
+        self._refresh_dots_hint_and_stop_btn()
+        # Unlocks the current segment if it was being worked on
+        self._grid_controller.reload()
+
+    def _on_manual_search_started(self, segment_id: int) -> None:
+        """User did a manual search, so the suggestion engine must skip it."""
+        if self._suggestion_engine is not None:
+            self._suggestion_engine.skip(segment_id)
+        self._refresh_dots_hint_and_stop_btn()
+
+    def _on_media_selected(self, segment_id: int, thumb_bytes: bytes) -> None:
+        self.media_selected.emit(segment_id, thumb_bytes)
+        self._refresh_dots()
+
     def _segment_playback_bounds(self, segment: Segment) -> tuple[float, float]:
         return segment_playback_bounds(self._word_timeline, segment)
 
@@ -250,7 +360,7 @@ class SegmentView(QWidget):
         playing = self._voiceover.is_playing_segment(self.current_segment.id)
         start, end = self._segment_playback_bounds(self.current_segment)
         self._play_btn.setText("Stop" if playing else "Play")
-        label = f"{start:.2f}s – {end:.2f}s"
+        label = f"{start:.2f}s - {end:.2f}s"
         self._play_btn.setToolTip(
             f"Stop playback ({label})" if playing else f"Play voiceover for this segment ({label})"
         )
@@ -268,8 +378,9 @@ class SegmentView(QWidget):
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         self._grid_controller.relayout_grid()
-        # Needed if segment view is accessible without a prior mouse click in project view
-        # self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+        # Needed for arrow-key navigation when segment view is accessed
+        # without a prior mouse click in project view
+        self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
@@ -301,14 +412,48 @@ class SegmentView(QWidget):
         self._grid_controller.set_segment(self.current_segment)
         self._refresh_nav_display()
 
+    def _dot_state(self, segment: Segment) -> str:
+        if segment.media is not None:
+            return "attached"  # green
+        entry = self._search_cache.get(segment.id)
+        if entry is not None and entry.results:
+            return "ready"  # orange
+        if segment.id in self._auto_searching_segment_ids:
+            return "working"  # dark gray
+        return "idle"  # gray
+
+    def _refresh_dots(self) -> None:
+        for i, (seg, btn) in enumerate(zip(self._project.segments, self._dot_buttons)):
+            btn.setStyleSheet(
+                nav_dot_style(self._dot_state(seg), is_current=i == self._current_index)
+            )
+
+    def _has_auto_work_left(self) -> bool:
+        """An entry, delivered or user-made, is what retires a planned segment."""
+        if self._search_plan is None or self._auto_search_stopped:
+            return False
+        return any(
+            self._search_cache.get(segment_id) is None
+            for segment_id in self._search_plan.query_by_segment_id
+        )
+
+    def _refresh_dots_hint_and_stop_btn(self) -> None:
+        """Repaint everything outside the grid that reads the search cache."""
+        self._refresh_dots()
+        entry = self._search_cache.get(self.current_segment.id)
+        suggestions = entry.suggestions if entry is not None else None
+        self._suggestions_hint.setVisible(bool(suggestions))
+        if suggestions:
+            self._suggestions_hint.setToolTip(_suggestions_tooltip(suggestions))
+        self._stop_auto_search_btn.setVisible(self._has_auto_work_left())
+
     def _refresh_nav_display(self) -> None:
         """Refresh top text, dot highlighting, and nav button enabled states."""
         n = len(self._project.segments)
         seg = self._project.segments[self._current_index] if n else None
         self._text_label.setText("" if seg is None else seg.text)
 
-        for i, btn in enumerate(self._dot_buttons):
-            btn.setStyleSheet(NAV_DOT_ACTIVE if i == self._current_index else NAV_DOT_INACTIVE)
+        self._refresh_dots_hint_and_stop_btn()
 
         if self._nav_prev is not None:
             self._nav_prev.setEnabled(n > 0 and self._current_index > 0)

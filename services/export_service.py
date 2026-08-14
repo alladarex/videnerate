@@ -31,7 +31,7 @@ class ExportCancelled(Exception):
 
 
 class _EncodeProgressLogger(ProgressBarLogger):
-    """Report encoding frame progress as phase 2, 0–100%."""
+    """Report encoding frame progress as phase 2, 0-100%."""
 
     def __init__(
         self,
@@ -137,6 +137,7 @@ def _add_source_overlay(
     return CompositeVideoClip(
         [clip.with_position("center"), text],
         size=(width, height),
+        bg_color=(0, 0, 0),
     )
 
 
@@ -232,7 +233,9 @@ def export_project(
                 report(1, pct, f"Preparing segments ({built}/{total})...")
 
             audio = AudioFileClip(str(paths.voiceover_mp3))
-            composite = CompositeVideoClip(clips, size=(settings.width, settings.height))
+            composite = CompositeVideoClip(
+                clips, size=(settings.width, settings.height), bg_color=(0, 0, 0)
+            )
             composite = composite.with_audio(audio).with_duration(timeline.audio_duration)
 
             # Phase 2: encoding

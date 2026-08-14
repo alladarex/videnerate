@@ -17,12 +17,15 @@ from PySide6.QtWidgets import (
 from core.models.project import Project
 from core.models.search_plan import SearchPlan
 from core.models.segment import Segment
+from core.models.word_timeline import load_word_timeline, segment_playback_duration
 from core.project_paths import ProjectPaths
+from services.media_suggestions import SuggestionEngine
 from services.project_service import save_project
 from ui.cache.segment_preview_cache import SegmentPreviewCache
 from ui.dialogs.export_dialog import ExportDialog
 from ui.dialogs.missing_media_dialog import MissingMediaDialog
 from ui.styles.qss import ACTION_BUTTON, TITLE_LABEL, top_bar_style
+from ui.utils.background_task import call_on_main_thread
 from ui.utils.grid_layout import relayout_grid
 from ui.widgets.segment_tile import SegmentTile
 from ui.widgets.segment_view import SegmentView
@@ -37,6 +40,7 @@ class ProjectWindow(QMainWindow):
         self._project = project
         self._search_plan = search_plan
         self._paths = ProjectPaths.from_title(project.title)
+        self._suggestion_engine: SuggestionEngine | None = None
         self._voiceover_btn: QPushButton | None = None
         self._stack: QStackedWidget | None = None
         self._project_view: QWidget | None = None
@@ -60,9 +64,12 @@ class ProjectWindow(QMainWindow):
         self._build_ui()
         self._sync_playback_button()
 
-        # Auto-assign is a segment-by-segment flow, so skip the project grid entirely.
-        if self._search_plan is not None and self._project.segments:
+        # Auto-assign is a segment-by-segment flow, so start from segment view
+        if self._search_plan is not None:
             self._open_segment_view(self._project.segments[0])
+            self._suggestion_engine = self._build_suggestion_engine(self._search_plan)
+            self._segment_view.set_suggestion_engine(self._suggestion_engine)
+            self._suggestion_engine.start()
 
         save_shortcut = QShortcut(QKeySequence.StandardKey.Save, self)
         save_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
@@ -87,7 +94,25 @@ class ProjectWindow(QMainWindow):
     def _toggle_voiceover(self) -> None:
         self._voiceover.toggle_full()
 
+    def _build_suggestion_engine(self, plan: SearchPlan) -> SuggestionEngine:
+        timeline = load_word_timeline(self._paths)
+        view = self._segment_view
+        return SuggestionEngine(
+            plan,
+            min_duration_s_by_segment_id={
+                seg.id: segment_playback_duration(timeline, seg) for seg in self._project.segments
+            },
+            on_started=lambda segment_id: call_on_main_thread(
+                lambda: view.suggestions_started(segment_id)
+            ),
+            on_suggestions=lambda segment_suggestions: call_on_main_thread(
+                lambda: view.suggestions_ready(segment_suggestions)
+            ),
+        )
+
     def closeEvent(self, event: QCloseEvent) -> None:
+        if self._suggestion_engine is not None:
+            self._suggestion_engine.cancel()
         self._voiceover.stop()
         self._segment_view.release_preview_resources()
         self._preview_cache.clear()
@@ -196,6 +221,7 @@ class ProjectWindow(QMainWindow):
             grid_spacing=self._grid_spacing,
             preview_cache=self._preview_cache,
             voiceover=self._voiceover,
+            search_plan=self._search_plan,
             parent=self._stack,
         )
         self._segment_view.close_requested.connect(self._show_project_view)

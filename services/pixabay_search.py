@@ -9,7 +9,7 @@ from services.search_common import (
     VIDEO_MAX_SHORT_EDGE,
     VIDEO_MIN_SHORT_EDGE,
     SearchResult,
-    fetch_bytes,
+    fetch_bytes_parallel,
     fetch_json,
     is_valid_http_url,
 )
@@ -91,14 +91,25 @@ def fetch_pixabay_image_results(query: str, *, limit: int = 10) -> list[SearchRe
         print(f"[{SOURCE}] fetch_pixabay_image_results failed for query '{q}': {exc}")
         return []
 
-    out: list[SearchResult] = []
+    # (image_url, thumb_url, page_url), capped at limit before any thumbnail fetch.
+    candidates: list[tuple[str, str, str | None]] = []
     for result in payload.get("hits") or []:
         if not isinstance(result, dict):
             continue
         image_url, thumb_url = _pick_image_urls(result)
         if not image_url or not thumb_url:
             continue
-        thumb_bytes = fetch_bytes(thumb_url, headers=VIDENERATE_HEADERS, log_tag=SOURCE)
+        candidates.append((image_url, thumb_url, result.get("pageURL")))
+        if len(candidates) >= limit:
+            break
+
+    thumbs = fetch_bytes_parallel(
+        [thumb_url for _, thumb_url, _ in candidates],
+        headers=VIDENERATE_HEADERS,
+        log_tag=SOURCE,
+    )
+    out: list[SearchResult] = []
+    for (image_url, _, page_url), thumb_bytes in zip(candidates, thumbs):
         if thumb_bytes:
             out.append(
                 SearchResult(
@@ -106,12 +117,10 @@ def fetch_pixabay_image_results(query: str, *, limit: int = 10) -> list[SearchRe
                     url=image_url,
                     thumb_bytes=thumb_bytes,
                     source=SOURCE,
-                    page_url=result.get("pageURL"),
+                    page_url=page_url,
                 )
             )
-        if len(out) >= limit:
-            break
-    return out[:limit]
+    return out
 
 
 def fetch_pixabay_video_results(
@@ -145,7 +154,9 @@ def fetch_pixabay_video_results(
         print(f"[{SOURCE}] fetch_pixabay_video_results failed for query '{q}': {exc}")
         return []
 
-    out: list[SearchResult] = []
+    # Capped at limit after the payload-level filters, so the FILTER_HEADROOM
+    # over-collection above never turns into extra thumbnail downloads.
+    candidates: list[tuple[str, str, str | None]] = []
     for result in payload.get("hits") or []:
         if not isinstance(result, dict):
             continue
@@ -155,7 +166,17 @@ def fetch_pixabay_video_results(
         video_url, thumb_url = _pick_video_urls(result)
         if not video_url or not thumb_url:
             continue
-        thumb_bytes = fetch_bytes(thumb_url, headers=VIDENERATE_HEADERS, log_tag=SOURCE)
+        candidates.append((video_url, thumb_url, result.get("pageURL")))
+        if len(candidates) >= limit:
+            break
+
+    thumbs = fetch_bytes_parallel(
+        [thumb_url for _, thumb_url, _ in candidates],
+        headers=VIDENERATE_HEADERS,
+        log_tag=SOURCE,
+    )
+    out: list[SearchResult] = []
+    for (video_url, _, page_url), thumb_bytes in zip(candidates, thumbs):
         if thumb_bytes:
             out.append(
                 SearchResult(
@@ -163,9 +184,7 @@ def fetch_pixabay_video_results(
                     url=video_url,
                     thumb_bytes=thumb_bytes,
                     source=SOURCE,
-                    page_url=result.get("pageURL"),
+                    page_url=page_url,
                 )
             )
-        if len(out) >= limit:
-            break
-    return out[:limit]
+    return out

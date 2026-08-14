@@ -1,4 +1,4 @@
-"""All LLM calls: narration writing, segmentation, and media search planning."""
+"""All LLM calls: narration writing, segmentation, search planning, and media ranking."""
 
 import json
 from typing import Any
@@ -42,6 +42,10 @@ DEFAULT_SEARCH_PLAN_MODEL = "gpt-5.6-terra"
 # Plan passes to sample before giving up. On a long segment list a model sometimes
 # stops a few entries early.
 SEARCH_PLAN_ATTEMPTS = 3
+# Ranks auto-assign candidates. Shares the planner's model, which is already in the
+# registry above, so the narration-view dropdowns gain nothing new. A model added
+# here alone must still resolve through '_MODEL_CLIENTS'.
+VISION_RANKING_MODEL = "gpt-5.6-terra"
 
 
 def _resolve_provider(selected_model: str) -> tuple[OpenAI, str]:
@@ -166,9 +170,27 @@ def generate_segment_search_plan(
         try:
             return parse_search_plan(
                 response.choices[0].message.content or "",
-                segment_ids=list(text_by_segment_id),
+                text_by_segment_id=text_by_segment_id,
             )
         except ValueError as exc:
             if attempts_left == 0:
                 raise
             print(f"[llm_service] search plan rejected, retrying: {exc}")
+
+
+def generate_media_ranking(
+    messages: list[dict[str, Any]],
+    *,
+    selected_model: str = VISION_RANKING_MODEL,
+    temperature: float = 0.2,
+    max_tokens: int = 6000,
+) -> str:
+    """One vision ranking call. Returns the model's raw JSON reply text."""
+    client, model = _resolve_provider(selected_model)
+    response = client.chat.completions.create(
+        model=model,
+        messages=messages,
+        response_format={"type": "json_object"},
+        **_sampling_kwargs(model, temperature=temperature, max_tokens=max_tokens),
+    )
+    return response.choices[0].message.content or ""

@@ -9,7 +9,7 @@ from headers import BROWSER_HEADERS, ddg_api_headers
 from services.search_common import (
     HTTP_TIMEOUT_S,
     SearchResult,
-    fetch_bytes,
+    fetch_bytes_parallel,
     fetch_json,
     is_valid_http_url,
 )
@@ -76,9 +76,13 @@ def fetch_web_image_results(query: str, *, limit: int = 10) -> list[SearchResult
         if len(items) >= limit:
             break
 
+    thumbs = fetch_bytes_parallel(
+        [thumb_url for _, thumb_url, _ in items],
+        headers=BROWSER_HEADERS,
+        log_tag=_LOG_TAG,
+    )
     out: list[SearchResult] = []
-    for image_url, thumb_url, page_url in items:
-        thumb_bytes = fetch_bytes(thumb_url, headers=BROWSER_HEADERS, log_tag=_LOG_TAG)
+    for (image_url, _, page_url), thumb_bytes in zip(items, thumbs):
         if thumb_bytes:
             out.append(
                 SearchResult(
@@ -89,4 +93,4 @@ def fetch_web_image_results(query: str, *, limit: int = 10) -> list[SearchResult
                 )
             )
 
-    return out[:limit]
+    return out

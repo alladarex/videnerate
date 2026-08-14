@@ -6,7 +6,7 @@ from core.models.media import MediaType
 from headers import VIDENERATE_HEADERS
 from services.search_common import (
     SearchResult,
-    fetch_bytes,
+    fetch_bytes_parallel,
     fetch_json,
     is_valid_http_url,
 )
@@ -49,9 +49,9 @@ def fetch_giphy_gif_results(query: str, *, limit: int = 10) -> list[SearchResult
         print(f"[{SOURCE}] fetch_giphy_gif_results failed for query '{q}': {exc}")
         return []
 
-    items = payload.get("data") or []
-    out: list[SearchResult] = []
-    for item in items:
+    # (gif_url, thumb_url), capped at limit before any thumbnail fetch.
+    candidates: list[tuple[str, str]] = []
+    for item in payload.get("data") or []:
         if not isinstance(item, dict):
             continue
         images = item.get("images") or {}
@@ -68,8 +68,17 @@ def fetch_giphy_gif_results(query: str, *, limit: int = 10) -> list[SearchResult
         )
         if not gif_url or not thumb_url:
             continue
+        candidates.append((gif_url, thumb_url))
+        if len(candidates) >= limit:
+            break
 
-        thumb_bytes = fetch_bytes(thumb_url, headers=VIDENERATE_HEADERS, log_tag=SOURCE)
+    thumbs = fetch_bytes_parallel(
+        [thumb_url for _, thumb_url in candidates],
+        headers=VIDENERATE_HEADERS,
+        log_tag=SOURCE,
+    )
+    out: list[SearchResult] = []
+    for (gif_url, _), thumb_bytes in zip(candidates, thumbs):
         if thumb_bytes:
             out.append(
                 SearchResult(
@@ -79,7 +88,4 @@ def fetch_giphy_gif_results(query: str, *, limit: int = 10) -> list[SearchResult
                     source=SOURCE,
                 )
             )
-        if len(out) >= limit:
-            break
-
-    return out[:limit]
+    return out

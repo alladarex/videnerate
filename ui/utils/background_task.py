@@ -40,6 +40,15 @@ class _MainThreadDispatcher(QObject):
 _dispatcher = _MainThreadDispatcher()
 
 
+def call_on_main_thread(fn: Callable[[], None]) -> None:
+    """Run 'fn' on the main thread, from any thread.
+
+    For callers with their own worker threads, like the suggestion engine, whose
+    callbacks must still land where widgets may be touched.
+    """
+    _dispatcher.invoked.emit(fn)
+
+
 def run_in_thread[T](
     fn: Callable[[], T],
     *,
@@ -53,7 +62,7 @@ def run_in_thread[T](
 
     'fn' takes no arguments, so bind whatever it needs in a closure at the call site.
     Read the values you need off the widgets before starting, because 'fn' itself
-    must never touch a widget, a pixmap, or any other Qt object.
+    must never touch any Qt object.
 
     Nothing is returned. A caller that needs to know whether its job is still running
     keeps its own flag, which is cheaper than holding a thread it never joins.
@@ -63,7 +72,7 @@ def run_in_thread[T](
         try:
             result = fn()
         except Exception as exc:
-            # Copy the error into a name of our own. Python deletes 'exc' the moment
+            # Copy the error into a new variable. Python deletes 'exc' the moment
             # this block ends, and the function emitted below runs later on the main
             # thread, by which time 'exc' would be gone.
             error = exc

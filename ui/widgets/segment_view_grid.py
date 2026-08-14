@@ -28,6 +28,11 @@ from ui.widgets.segment_view_base_tiles import build_base_tiles
 from ui.widgets.segment_view_result_tiles import build_result_tile
 
 
+def attach_media(segment: Segment, result: SearchResult) -> None:
+    """Set the result as the segment's media. The file itself downloads at save."""
+    segment.media = Media(result.media_type, url=result.url, source=result.source)
+
+
 class SegmentViewGridController(QObject):
     """Manage segment view grid state, search lifecycle, and tile preview updates."""
 
@@ -43,6 +48,9 @@ class SegmentViewGridController(QObject):
         preview_cache: SegmentPreviewCache,
         on_media_selected: Callable[[int, bytes], None],
         word_timeline: WordTimeline,
+        is_segment_running: Callable[[int], bool],
+        on_manual_search_started: Callable[[int], None],
+        on_results_changed: Callable[[], None],
     ) -> None:
         super().__init__(grid_host)
         self._scroll = scroll
@@ -54,6 +62,11 @@ class SegmentViewGridController(QObject):
         self._preview_cache = preview_cache
         self._on_media_selected = on_media_selected
         self._word_timeline = word_timeline
+        # The view owns this state, the grid only reads and reports it: the first asks
+        # whether auto-assign holds a segment, the other two say something changed.
+        self._is_segment_running = is_segment_running
+        self._on_manual_search_started = on_manual_search_started
+        self._on_results_changed = on_results_changed
 
         self._tiles: list[QWidget] = []
         # Base tiles survive a result clear, so results start at this index.
@@ -86,6 +99,10 @@ class SegmentViewGridController(QObject):
     def set_segment(self, segment: Segment) -> None:
         """Switch active segment and rebuild visible tiles for that segment."""
         self._segment = segment
+        self.reload()
+
+    def reload(self) -> None:
+        """Rebuild the tiles for the segment already set, after its entry changed."""
         self._rebuild_tiles()
         self.relayout_grid()
 
@@ -134,21 +151,37 @@ class SegmentViewGridController(QObject):
             self._search_input.setText(cached.query)
 
             for result in cached.results:
-                if not result.url or not result.thumb_bytes:
-                    raise ValueError(f"Invalid cached result: {result!r}")
                 self._tiles.append(self._build_result_tile(result))
 
-            if cached.results:
+            if cached.error is not None:
+                self._search_status.setText("Auto-assign failed, search manually.")
+            elif cached.results:
                 self._search_status.setText(f"Showing {len(cached.results)} cached result(s).")
+            elif cached.suggestions is not None:
+                # Auto-assign ran and came back empty, which has to read
+                # differently from a segment its queue has not reached yet.
+                self._search_status.setText("Auto-assign found nothing, try another keyword.")
 
         # Always reflect current segment.media in the 'current' Media preview tile
         self._sync_media_tile()
 
-        if self._segment.id in self._searching_segment_ids:
+        if self._is_segment_running(self._segment.id):
+            self._lock_search("Finding media…")
+        elif self._segment.id in self._searching_segment_ids:
             self._set_search_loading(True, "Searching…")
 
     def _set_search_loading(self, is_loading: bool, status: str = "") -> None:
         self._search_btn.setEnabled(not is_loading)
+        self._search_status.setText(status)
+
+    def _lock_search(self, status: str) -> None:
+        """Auto-assign owns this segment right now, so the input locks too.
+
+        There is no unlock: delivery, failure and Stop all rebuild the tiles,
+        which recreates both widgets enabled.
+        """
+        self._search_input.setEnabled(False)
+        self._search_btn.setEnabled(False)
         self._search_status.setText(status)
 
     def _build_result_tile(self, result: SearchResult) -> QWidget:
@@ -196,7 +229,10 @@ class SegmentViewGridController(QObject):
 
         self._clear_results()
         segment_id = self._segment.id
+        # Overwrites any auto-search entry, which drops its proposals and marks
+        # the segment as the user's in one call
         self._search_cache.set(segment_id, query=query, results=[])
+        self._on_manual_search_started(segment_id)
         self._set_search_loading(True, f"Searching “{query}”…")
         self._searching_segment_ids.add(segment_id)
 
@@ -217,6 +253,9 @@ class SegmentViewGridController(QObject):
     def _on_search_finished(self, segment_id: int, query: str, results: list[SearchResult]) -> None:
         self._searching_segment_ids.discard(segment_id)
         self._search_cache.set(segment_id, query=query, results=results)
+        # This segment's dot reads its entry, which just changed, and the segment
+        # is not necessarily the one on screen.
+        self._on_results_changed()
         # The user may have navigated on while the search ran. The cache above keeps
         # the results, so coming back to this segment restores them.
         if self._segment.id != segment_id:
@@ -244,7 +283,7 @@ class SegmentViewGridController(QObject):
         self._set_search_loading(False, "Search failed. Try again.")
 
     def _select_media(self, result: SearchResult) -> None:
-        self._segment.media = Media(result.media_type, url=result.url, source=result.source)
+        attach_media(self._segment, result)
         self._thumb_bytes_by_segment_id[self._segment.id] = result.thumb_bytes
         self._on_media_selected(self._segment.id, result.thumb_bytes)
         self._sync_media_tile()

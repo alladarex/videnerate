@@ -93,22 +93,30 @@ QPushButton#SegmentNavArrow:pressed { background: #333; }
 QPushButton#SegmentNavArrow:disabled { color: #555; background: transparent; }
 """
 
-NAV_DOT_INACTIVE = """
-QPushButton#SegmentNavDot {
-  border: none;
-  border-radius: 3px;
-  background: #6b7280;
+# Nav dot fill by segment state. Grey also covers queued auto-search segments,
+# because nothing is happening for them yet.
+_NAV_DOT_FILL = {
+    "idle": "#6b7280",
+    "working": "#3f3f46",
+    "ready": "#f59e0b",
+    "attached": "#22c55e",
 }
-QPushButton#SegmentNavDot:hover { background: #9ca3af; }
+
+
+def nav_dot_style(state: str, *, is_current: bool) -> str:
+    """Fill carries the segment's state, border marks the current segment."""
+    fill = _NAV_DOT_FILL[state]
+    border = "2px solid #ffffff" if is_current else "none"
+    hover = "" if is_current else "QPushButton#SegmentNavDot:hover { border: 1px solid #9ca3af; }"
+    return f"""
+QPushButton#SegmentNavDot {{
+  border: {border};
+  border-radius: 3px;
+  background: {fill};
+}}
+{hover}
 """
 
-NAV_DOT_ACTIVE = """
-QPushButton#SegmentNavDot {
-  border: 2px solid #a855f7;
-  border-radius: 3px;
-  background: #141414;
-}
-"""
 
 TRANSPARENT_SCROLL = "QScrollArea { background: transparent; }"
 
