@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -16,7 +17,7 @@ from PySide6.QtWidgets import (
 
 from core.models.project import Project
 from core.models.search_plan import SearchPlan
-from core.models.segment import Segment
+from core.models.segment import Segment, describe_media_failure
 from core.models.word_timeline import load_word_timeline, segment_playback_duration
 from core.project_paths import ProjectPaths
 from services.media_suggestions import SuggestionEngine
@@ -80,8 +81,26 @@ class ProjectWindow(QMainWindow):
         if self._voiceover_btn is not None:
             self._voiceover_btn.setText(self._voiceover.full_play_button_text())
 
+    def _refresh_media(self) -> None:
+        """Redraw both views based on what the segments currently hold."""
+        for tile in self._segment_tiles:
+            tile.refresh_media()
+        self._segment_view.refresh_media()
+
     def _save_project(self) -> None:
-        save_project(self._project)
+        """Save, if any segment media download fails redraw and report the failed."""
+        failed = save_project(self._project)
+        if not failed:
+            return
+
+        self._refresh_media()
+        one = len(failed) == 1
+        QMessageBox.warning(
+            self,
+            "Media not saved",
+            f"{describe_media_failure(failed)}\n\n"
+            f"{'It' if one else 'They'} will be blank in the export.",
+        )
 
     def _on_export_clicked(self) -> None:
         any_missing = any(seg.media is None for seg in self._project.segments)
@@ -90,6 +109,8 @@ class ProjectWindow(QMainWindow):
             if warning.exec() != MissingMediaDialog.DialogCode.Accepted:
                 return
         ExportDialog(self._project, self).exec()
+        # The export saves first, which can drop media when a 4xx error occured during download
+        self._refresh_media()
 
     def _toggle_voiceover(self) -> None:
         self._voiceover.toggle_full()
@@ -226,6 +247,7 @@ class ProjectWindow(QMainWindow):
         )
         self._segment_view.close_requested.connect(self._show_project_view)
         self._segment_view.media_selected.connect(self._on_media_selected)
+        self._segment_view.save_requested.connect(self._save_project)
         self._stack.addWidget(self._segment_view)
 
         self._stack.setCurrentIndex(0)

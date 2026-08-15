@@ -115,7 +115,7 @@ class SegmentViewGridController(QObject):
             tile_size_px=self._tile_size_px,
             grid_spacing=self._grid_spacing,
         )
-        self._sync_media_tile()
+        self.sync_media_tile()
 
     def _rebuild_tiles(self) -> None:
         """Recreate base tiles and restore cached result tiles for active segment."""
@@ -163,7 +163,7 @@ class SegmentViewGridController(QObject):
                 self._search_status.setText("Auto-assign found nothing, try another keyword.")
 
         # Always reflect current segment.media in the 'current' Media preview tile
-        self._sync_media_tile()
+        self.sync_media_tile()
 
         if self._is_segment_running(self._segment.id):
             self._lock_search("Finding media…")
@@ -204,7 +204,7 @@ class SegmentViewGridController(QObject):
             except (RuntimeError, TypeError) as exc:
                 print(f"[segment_view_grid] result tile teardown skipped: {exc}")
         self._tiles = self._tiles[: self._base_tile_count]
-        self._sync_media_tile()
+        self.sync_media_tile()
 
     def release_preview_resources(self) -> None:
         for tile in self._tiles:
@@ -286,9 +286,9 @@ class SegmentViewGridController(QObject):
         attach_media(self._segment, result)
         self._thumb_bytes_by_segment_id[self._segment.id] = result.thumb_bytes
         self._on_media_selected(self._segment.id, result.thumb_bytes)
-        self._sync_media_tile()
+        self.sync_media_tile()
 
-    def _sync_media_tile(self) -> None:
+    def sync_media_tile(self) -> None:
         """Draw the Media tile's preview from the active segment's media.
 
         Priority (first match wins):

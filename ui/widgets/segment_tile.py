@@ -107,7 +107,7 @@ class SegmentTile(TileFrame):
         2. The media itself, see 'show_media', which draws it or falls back
            to a "Thumbnail error" label.
 
-        The segment view runs the same ladder in 'SegmentViewGridController._sync_media_tile'.
+        The segment view runs the same ladder in 'SegmentViewGridController.sync_media_tile'.
         It has to store its remembered bytes per segment id because it reuses a single
         preview widget for every segment. This view builds one tile per segment,
         so a plain field is enough.
@@ -124,11 +124,7 @@ class SegmentTile(TileFrame):
         self._media_preview.show_media(media, thumb_bytes=self._thumb_bytes)
 
     def _show_empty_state(self) -> None:
-        """Show the 'add media' hint: a small plus icon, or a '+' if it will not load.
-
-        Deliberately a fraction of the tile, so it reads as a hint rather than
-        filling it the way a thumbnail does.
-        """
+        """Show the 'add media' hint: a small plus icon, or a '+' if it will not load."""
         self._media_preview.clear_media()
         pixmap = load_pixmap_from_path(icon_path("plus.png"))
         if pixmap is None:

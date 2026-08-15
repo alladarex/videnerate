@@ -20,7 +20,6 @@ from core.models.segment import Segment
 from core.models.word_timeline import load_word_timeline, segment_playback_bounds
 from core.project_paths import ProjectPaths
 from services.media_suggestions import SegmentSuggestions, SuggestionEngine
-from services.project_service import save_project
 from services.vision_ranking import Suggestion
 from ui.cache.segment_preview_cache import SegmentPreviewCache
 from ui.cache.segment_search_cache import SegmentSearchCache
@@ -50,6 +49,7 @@ class SegmentView(QWidget):
 
     close_requested = Signal()
     media_selected = Signal(int, bytes)
+    save_requested = Signal()
 
     _BAR_HEIGHT_PX = 56
 
@@ -116,7 +116,7 @@ class SegmentView(QWidget):
         save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         save_btn.setToolTip("Save project")
         save_btn.setStyleSheet(ACTION_BUTTON)
-        save_btn.clicked.connect(lambda: save_project(self._project))
+        save_btn.clicked.connect(self.save_requested.emit)
 
         self._play_btn = QPushButton("Play", self)
         self._play_btn.setFixedHeight(36)
@@ -309,6 +309,10 @@ class SegmentView(QWidget):
         self._play_btn.setToolTip(
             f"Stop playback ({label})" if playing else f"Play voiceover for this segment ({label})"
         )
+
+    def refresh_media(self) -> None:
+        """Redraw the active segment's media, after something outside changed it."""
+        self._grid_controller.sync_media_tile()
 
     def set_segment(self, segment: Segment) -> None:
         for i, seg in enumerate(self._project.segments):

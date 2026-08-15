@@ -34,3 +34,13 @@ class Segment:
         seg.word_start = int(data["word_start"])
         seg.word_end = int(data["word_end"])
         return seg
+
+
+def describe_media_failure(segments: list[Segment]) -> str:
+    """Returns a message for media that could not be downloaded, for the user to read.
+
+    Each segment in the message is represented by its text.
+    """
+    subject = "this segment" if len(segments) == 1 else "these segments"
+    listed = "\n".join(f"  • {seg.text}" for seg in segments)
+    return f"Media for {subject} could not be downloaded:\n\n{listed}"

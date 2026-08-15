@@ -5,12 +5,14 @@ import shutil
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
+from urllib.error import HTTPError
 
 from config import PROJECTS_DIR
 from core.json_io import save_json
 from core.models.media import Media
 from core.models.project import Project
 from core.models.search_plan import SearchPlan
+from core.models.segment import Segment
 from core.project_paths import INVALID_FILENAME_CHARS, ProjectPaths
 from core.word_tokenize import normalize_text, require_segment_words_match_narration
 from services.alignment_service import align_project_audio
@@ -187,7 +189,8 @@ def _ensure_media_persisted(paths: ProjectPaths, *, segment_id: int, media: Medi
             media.file_path = _rel_path(paths, dest)
             return
 
-        return
+        # The path is recorded but the file is gone
+        raise FileNotFoundError(f"Media file is gone: {src} (segment_id={segment_id})")
 
     # Otherwise, download from URL if present
     if media.url:
@@ -238,7 +241,7 @@ def _cleanup_unused_project_media(paths: ProjectPaths, project: Project) -> None
             continue
 
 
-def save_project(project: Project) -> Path:
+def save_project(project: Project) -> list[Segment]:
     """Persist an existing in-memory project to disk.
 
     - Ensures <project>/media/ exists.
@@ -246,22 +249,29 @@ def save_project(project: Project) -> Path:
     - Writes project.json.
     - Cleans up unused media files from <project>/media/.
 
-    Returns the absolute path to the project directory.
+    Returns the segments whose media download failed. Media is set to None for the
+    ones that failed with an http 4xx.
     """
     dir_name = validate_project_title_for_storage(project.title)
     paths = ProjectPaths.from_title(dir_name)
     paths.ensure_layout()
 
     # Save selected media to media/ folder (only for attached media)
+    failed_segments: list[Segment] = []
     for seg in project.segments:
         if seg.media is None:
             continue
         try:
             _ensure_media_persisted(paths, segment_id=seg.id, media=seg.media)
-        except Exception:
+        except Exception as exc:
             # Don't block saving the rest of the project on a single media failure
-            continue
+            print(f"[project_service] segment {seg.id} media not saved: {exc}")
+            failed_segments.append(seg)
+            # A 4xx error will also refuse the next request attempt,
+            # a timeout says nothing about the URL, so only the 'dead' ones are dropped
+            if isinstance(exc, HTTPError) and 400 <= exc.code < 500:
+                seg.media = None
 
     save_json(paths.project_json, project.to_dict())
     _cleanup_unused_project_media(paths, project)
-    return paths.root
+    return failed_segments

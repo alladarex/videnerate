@@ -20,7 +20,7 @@ from proglog import ProgressBarLogger
 from core.export_settings import ExportSettings
 from core.models.media import MediaType
 from core.models.project import Project
-from core.models.segment import Segment
+from core.models.segment import Segment, describe_media_failure
 from core.models.word_timeline import load_word_timeline, segment_playback_bounds
 from core.project_paths import ProjectPaths
 from services.project_service import save_project
@@ -28,6 +28,15 @@ from services.project_service import save_project
 
 class ExportCancelled(Exception):
     pass
+
+
+class MediaDownloadFailed(Exception):
+    """Media download failed for segment(s) during pre-export save."""
+
+    def __init__(self, segments: list[Segment]) -> None:
+        super().__init__(
+            f"{describe_media_failure(segments)}\n\nAttach new media, then export again."
+        )
 
 
 class _EncodeProgressLogger(ProgressBarLogger):
@@ -198,7 +207,9 @@ def export_project(
 
     # Phase 1: resource gathering
     report(1, 0, "Saving project...")
-    save_project(project)
+    failed_segments = save_project(project)
+    if failed_segments:
+        raise MediaDownloadFailed(failed_segments)
     report(1, 5, "Loading timeline...")
 
     timeline = load_word_timeline(paths)
